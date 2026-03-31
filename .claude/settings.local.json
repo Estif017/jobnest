@@ -16,7 +16,9 @@
       "Bash(npx create-next-app@14 frontend --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --eslint)",
       "Bash(bash start.sh)",
       "Bash(netstat -ano)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(openssl rand:*)",
+      "Bash(\"C:/Users/13237/OneDrive/Desktop/Claude Codes/JobNest/frontend/.env.local\":*)"
     ]
   }
 }

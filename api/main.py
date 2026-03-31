@@ -245,6 +245,15 @@ def scrape(body: ScrapeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    # scored only contains newly inserted jobs; also return existing DB matches
+    # so the frontend never shows an empty list when jobs already exist.
+    from models import ScoredJob as ScoredJobModel
+    scored_ids = {s.job.id for s in scored}
+    all_matching = search_jobs(keyword=body.query)
+    for job in all_matching:
+        if job.id not in scored_ids:
+            scored.append(ScoredJobModel(job=job))
+
     return [ScoredJobResponse(**scored_job_to_dict(s)) for s in scored]
 
 
@@ -298,15 +307,18 @@ def coach_chat(body: CoachChatRequest):
 
     user_message = "\n\n".join(context_parts + [body.message]) if context_parts else body.message
 
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=500,
-        system=system,
-        messages=[{"role": "user", "content": user_message}],
-    )
-
-    return CoachChatResponse(reply=response.content[0].text)
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system=system,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        return CoachChatResponse(reply=response.content[0].text)
+    except Exception as e:
+        print(f"[coach/chat error] {e}")
+        return CoachChatResponse(reply=f"Coach unavailable: {e}")
 
 
 @app.post("/github/fetch", response_model=GitHubProfileResponse)
