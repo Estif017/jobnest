@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python main.py list)",
+      "Bash(python main.py --help)",
+      "Bash(python main.py parse-resume \"C:/Users/13237/Downloads/Estifanos_Teklearegay_Resume_.pdf\")",
+      "Bash(pip install:*)",
+      "Bash(c:python39python.exe -m pip install --upgrade pip)",
+      "Bash(python -m pip --version)",
+      "Bash(python:*)",
+      "Bash(\"C:/Users/13237/OneDrive/Desktop/Claude Codes/JobNest/.env\")",
+      "Bash(python -c \":*)",
+      "Bash(curl -s \"http://localhost:8000/jobs/search?keyword=engineer\")",
+      "Bash(pkill -f uvicorn)",
+      "Bash(npx create-next-app@14 frontend --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npx create-next-app@14 frontend --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --eslint)",
+      "Bash(bash start.sh)",
+      "Bash(netstat -ano)",
+      "Bash(curl:*)"
+    ]
+  }
+}
