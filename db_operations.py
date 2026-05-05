@@ -463,14 +463,23 @@ def save_chat_message(role: str, message: str, user_id: int = 1, session_id: Opt
     conn.close()
 
 
+_LEGACY_SESSION = "legacy"
+
+
 def load_chat_history(limit: int = 20, user_id: int = 1, session_id: Optional[str] = None) -> List[dict]:
     """
     Returns the last `limit` messages for a user, oldest first.
-    If session_id is given, restricts to that session only.
+    session_id="legacy" loads messages that pre-date the sessions feature (NULL session_id).
     """
     conn = get_connection()
     cursor = conn.cursor()
-    if session_id:
+    if session_id == _LEGACY_SESSION:
+        cursor.execute(
+            "SELECT role, message, timestamp FROM chat_history "
+            "WHERE COALESCE(user_id, 1) = ? AND session_id IS NULL ORDER BY id DESC LIMIT ?",
+            (user_id, limit),
+        )
+    elif session_id:
         cursor.execute(
             "SELECT role, message, timestamp FROM chat_history "
             "WHERE COALESCE(user_id, 1) = ? AND session_id = ? ORDER BY id DESC LIMIT ?",
@@ -493,11 +502,13 @@ def load_chat_history(limit: int = 20, user_id: int = 1, session_id: Optional[st
 def get_chat_sessions(user_id: int = 1) -> List[dict]:
     """
     Returns all distinct chat sessions for a user, newest first.
+    Includes a synthetic 'legacy' entry for messages that pre-date the sessions feature.
     Each entry: {session_id, title, last_active}.
-    Title = first user message in the session, truncated to 50 chars.
     """
     conn = get_connection()
     cursor = conn.cursor()
+
+    # Named sessions
     cursor.execute(
         """
         SELECT
@@ -517,9 +528,26 @@ def get_chat_sessions(user_id: int = 1) -> List[dict]:
         """,
         (user_id, user_id),
     )
-    rows = cursor.fetchall()
+    rows = list(cursor.fetchall())
+
+    # Legacy messages (NULL session_id) — surface as one entry at the bottom
+    cursor.execute(
+        """
+        SELECT
+            (SELECT message FROM chat_history h2
+             WHERE h2.session_id IS NULL AND COALESCE(h2.user_id, 1) = ? AND h2.role = 'user'
+             ORDER BY h2.id ASC LIMIT 1) AS title,
+            MAX(timestamp) AS last_active,
+            COUNT(*) AS cnt
+        FROM chat_history
+        WHERE COALESCE(user_id, 1) = ? AND session_id IS NULL
+        """,
+        (user_id, user_id),
+    )
+    legacy = cursor.fetchone()
     conn.close()
-    return [
+
+    sessions = [
         {
             "session_id":  row["session_id"],
             "title":       (row["title"] or "New chat")[:50],
@@ -527,6 +555,15 @@ def get_chat_sessions(user_id: int = 1) -> List[dict]:
         }
         for row in rows
     ]
+
+    if legacy and legacy["cnt"]:
+        sessions.append({
+            "session_id":  _LEGACY_SESSION,
+            "title":       (legacy["title"] or "Earlier conversations")[:50],
+            "last_active": legacy["last_active"],
+        })
+
+    return sessions
 
 
 # ---------------------------------------------------------------------------
