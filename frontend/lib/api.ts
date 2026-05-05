@@ -185,6 +185,15 @@ export interface CompanyNews {
 export const fetchCompanyNews = (jobId: number): Promise<CompanyNews> =>
   apiFetch(`/jobs/${jobId}/company-news`);
 
+export interface AgentAnalysis {
+  analysis: string;
+  tool_calls: Array<{ query: string; results_count: number }>;
+  job_id: number;
+}
+
+export const agentAnalyzeJob = (jobId: number): Promise<AgentAnalysis> =>
+  apiFetch(`/jobs/${jobId}/agent-analyze`, { method: "POST" });
+
 // ---------------------------------------------------------------------------
 // Scrape
 // ---------------------------------------------------------------------------

@@ -82,7 +82,7 @@ def _search_remoteok(query: str) -> List[dict]:
 # Deduplication and save
 # ---------------------------------------------------------------------------
 
-def _save_new_jobs(results: List[dict]) -> List[Job]:
+def _save_new_jobs(results: List[dict], user_id: int = 1) -> List[Job]:
     """
     Converts each raw result dict into a Job and saves it — but only if a job
     with the same URL isn't already in the database. Returns the list of newly
@@ -94,7 +94,7 @@ def _save_new_jobs(results: List[dict]) -> List[Job]:
         if not r["url"]:
             continue    # Skip listings with no URL — can't deduplicate them
 
-        if get_job_by_url(r["url"]):
+        if get_job_by_url(r["url"], user_id):
             continue    # Already in the tracker — skip
 
         job = Job(
@@ -104,9 +104,9 @@ def _save_new_jobs(results: List[dict]) -> List[Job]:
             notes=r["description"][:500],
         )
 
-        if add_job(job):
+        if add_job(job, user_id):
             # Fetch back the saved row so we have the real database id
-            saved = get_job_by_url(r["url"])
+            saved = get_job_by_url(r["url"], user_id)
             if saved:
                 new_jobs.append(saved)
 
@@ -194,7 +194,7 @@ def _print_jobs(jobs: List[Job]) -> None:
 # Main orchestration function
 # ---------------------------------------------------------------------------
 
-def run_smart_search(query: str, location: str, score: bool = True) -> List[ScoredJob]:
+def run_smart_search(query: str, location: str, score: bool = True, user_id: int = 1) -> List[ScoredJob]:
     """
     Full pipeline: fetch from RemoteOK → deduplicate and save → optionally score with AI
     → print table → log the session. Returns scored jobs (empty list if score=False).
@@ -213,35 +213,35 @@ def run_smart_search(query: str, location: str, score: bool = True) -> List[Scor
         return []
 
     console.print(f"Found {len(results)} listing(s). Saving new ones ...")
-    new_jobs = _save_new_jobs(results)
+    new_jobs = _save_new_jobs(results, user_id=user_id)
 
     if not new_jobs:
         console.print("All results already exist in your tracker.")
-        existing = [get_job_by_url(r["url"]) for r in results if r["url"]]
+        existing = [get_job_by_url(r["url"], user_id) for r in results if r["url"]]
         _print_jobs([j for j in existing if j])
         return []
 
     if not score:
         # No-AI mode: just display and log what was saved
         _print_jobs(new_jobs)
-        save_search_session(f"{query} in {location}", len(new_jobs))
+        save_search_session(f"{query} in {location}", len(new_jobs), user_id=user_id)
         console.print(f"\n[dim]Saved {len(new_jobs)} job(s). Run 'analyze <id>' when AI is available.[/dim]")
         return []
 
-    profile = build_user_profile()
+    profile = build_user_profile(user_id=user_id)
     if profile is None:
         console.print("[yellow]No profile found — skipping AI scoring.[/yellow]")
         console.print("[dim]Run: python main.py parse-resume <path/to/resume.pdf>[/dim]")
         _print_jobs(new_jobs)
-        save_search_session(f"{query} in {location}", len(new_jobs))
+        save_search_session(f"{query} in {location}", len(new_jobs), user_id=user_id)
         return []
 
-    console.print(f"Scoring {len(new_jobs)} new job(s) with Gemini ...")
+    console.print(f"Scoring {len(new_jobs)} new job(s) with AI ...")
     scored = _score_jobs(new_jobs, profile)
 
     _print_ranked(scored)
 
-    save_search_session(f"{query} in {location}", len(new_jobs))
+    save_search_session(f"{query} in {location}", len(new_jobs), user_id=user_id)
 
     return scored
 

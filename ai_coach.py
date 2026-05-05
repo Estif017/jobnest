@@ -33,17 +33,17 @@ VERDICT_OPTIONS = ("APPLY", "SKIP", "RED FLAG")    # Constrained set for the pro
 # Profile builder
 # ---------------------------------------------------------------------------
 
-def build_user_profile() -> Optional[UserProfile]:
+def build_user_profile(user_id: int = 1) -> Optional[UserProfile]:
     """
     Loads the stored ResumeProfile and GitHubProfile from SQLite and merges
     them into a UserProfile. Returns None if no resume has been parsed yet.
     GitHub data is optional — an empty GitHubProfile is used if not present.
     """
-    resume = load_profile()
+    resume = load_profile(user_id=user_id)
     if resume is None:
         return None     # Can't build a profile without a resume
 
-    github = load_github_profile()
+    github = load_github_profile(user_id=user_id)
     if github is None:
         # Use an empty placeholder so downstream code doesn't need to branch
         github = GitHubProfile(username="")
@@ -150,11 +150,11 @@ def _parse_response(response_text: str, job_id: int) -> JobAnalysis:
 # Main public function
 # ---------------------------------------------------------------------------
 
-def analyze_job(job: Job, profile: UserProfile) -> JobAnalysis:
+def analyze_job(job: Job, profile: UserProfile, user_id: int = 1) -> JobAnalysis:
     """
-    Sends the job and user profile to Gemini and returns a JobAnalysis.
+    Sends the job and user profile to Claude and returns a JobAnalysis.
     Automatically saves the result to SQLite via save_analysis().
-    Raises RuntimeError if GEMINI_API_KEY is not set.
+    Raises RuntimeError if ANTHROPIC_API_KEY is not set.
     """
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env automatically
     prompt = _build_prompt(job, profile)
@@ -167,7 +167,7 @@ def analyze_job(job: Job, profile: UserProfile) -> JobAnalysis:
     response_text = response.content[0].text
     analysis      = _parse_response(response_text, job.id)
 
-    save_analysis(analysis)
+    save_analysis(analysis, user_id=user_id)
     return analysis
 
 

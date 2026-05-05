@@ -86,6 +86,70 @@ def init_db() -> None:
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            email               TEXT NOT NULL UNIQUE,
+            password_hash       TEXT,           -- NULL for Google OAuth users
+            provider            TEXT NOT NULL DEFAULT 'email',
+            created_at          TEXT NOT NULL,
+            onboarding_complete INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            role      TEXT NOT NULL,      -- 'user' or 'assistant'
+            message   TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def migrate_db() -> None:
+    """
+    Adds new columns to existing tables without dropping data.
+    Safe to call on every startup — skips columns that already exist.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    def _add_col(table: str, col: str, defn: str) -> None:
+        cursor.execute(f"PRAGMA table_info({table})")
+        if col not in [row[1] for row in cursor.fetchall()]:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {defn}")
+
+    # user_profile — onboarding fields
+    _add_col("user_profile", "user_id",           "INTEGER REFERENCES users(id)")
+    _add_col("user_profile", "target_role",        "TEXT DEFAULT ''")
+    _add_col("user_profile", "target_industries",  "TEXT DEFAULT '[]'")
+    _add_col("user_profile", "seniority_level",    "TEXT DEFAULT ''")
+    _add_col("user_profile", "employment_types",   "TEXT DEFAULT '[]'")
+    _add_col("user_profile", "work_model",         "TEXT DEFAULT ''")
+    _add_col("user_profile", "current_location",   "TEXT DEFAULT ''")
+    _add_col("user_profile", "open_to_relocation", "INTEGER DEFAULT 0")
+    _add_col("user_profile", "salary_min",         "INTEGER DEFAULT 0")
+    _add_col("user_profile", "salary_max",         "INTEGER DEFAULT 0")
+    _add_col("user_profile", "salary_currency",    "TEXT DEFAULT 'USD'")
+    _add_col("user_profile", "years_experience",   "TEXT DEFAULT ''")
+    _add_col("user_profile", "top_skills_manual",  "TEXT DEFAULT '[]'")
+    _add_col("user_profile", "certifications",     "TEXT DEFAULT ''")
+    _add_col("user_profile", "linkedin_url",       "TEXT DEFAULT ''")
+    _add_col("user_profile", "portfolio_url",      "TEXT DEFAULT ''")
+    _add_col("user_profile", "github_username",    "TEXT DEFAULT ''")
+
+    # user_id column on all other tables
+    for tbl in ["jobs", "github_profile", "ai_analyses", "chat_history", "search_sessions"]:
+        _add_col(tbl, "user_id", "INTEGER REFERENCES users(id)")
+
+    # Back-fill existing rows so they belong to user 1
+    for tbl in ["jobs", "user_profile", "github_profile", "ai_analyses", "chat_history", "search_sessions"]:
+        cursor.execute(f"UPDATE {tbl} SET user_id = 1 WHERE user_id IS NULL")
+
     conn.commit()
     conn.close()
 

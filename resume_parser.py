@@ -163,7 +163,7 @@ def _extract_education(text: str) -> List[EducationEntry]:
 # Main public function
 # ---------------------------------------------------------------------------
 
-def parse_resume(file_path: str) -> ResumeProfile:
+def parse_resume(file_path: str, user_id: int = 1) -> ResumeProfile:
     """
     Parses a PDF resume at the given file path and returns a ResumeProfile.
     Extracts name, skills, experience, and education from the raw text.
@@ -184,7 +184,7 @@ def parse_resume(file_path: str) -> ResumeProfile:
         raw_text=text,
     )
 
-    save_profile(profile)   # Persist to SQLite so we never need to re-parse
+    save_profile(profile, user_id=user_id)   # Persist to SQLite so we never need to re-parse
     return profile
 
 

@@ -3,3 +3,5 @@ pdfplumber
 google-genai
 requests
 rich
+anthropic
+bcrypt

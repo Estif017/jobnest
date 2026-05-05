@@ -341,6 +341,150 @@ def company_news(job_id: int, user_id: int = Depends(get_user_id)):
 
 
 # ---------------------------------------------------------------------------
+# Agent Analyze — "Let the Agent Decide" using Claude Tool Use
+#
+# Instead of hardcoding "call Tavily → summarize", Claude receives:
+#   - The job info + a search_web tool definition
+#   - It decides on its own whether and what to search
+#   - The backend only calls Tavily when Claude emits a tool_use block
+#
+# Agentic loop:
+#   1. Send job context + tools to Claude
+#   2. Claude returns stop_reason="tool_use" → execute tool → feed result back
+#   3. Repeat until stop_reason="end_turn"
+#   4. Return final analysis + log of searches Claude chose to make
+# ---------------------------------------------------------------------------
+
+@app.post("/jobs/{job_id}/agent-analyze")
+def jobs_agent_analyze(job_id: int, user_id: int = Depends(get_user_id)):
+    """
+    Runs an agentic analysis of a job using Claude's Tool Use API.
+    Claude decides when to call search_web — the backend never hardcodes it.
+    Returns the final analysis text + every search query Claude issued.
+    """
+    import anthropic
+    from tavily import TavilyClient
+
+    job = get_job_by_id(job_id, user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    if not tavily_key:
+        raise HTTPException(status_code=500, detail="TAVILY_API_KEY not set.")
+
+    claude = anthropic.Anthropic()
+    tavily = TavilyClient(api_key=tavily_key)
+
+    # The tool Claude can choose to call — one clean capability
+    tools = [{
+        "name": "search_web",
+        "description": (
+            "Search the web for current information about a company or job posting. "
+            "Use this to find recent news, funding rounds, layoffs, product launches, "
+            "company size, culture, or any facts that would help a job seeker decide "
+            "whether to apply."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query to look up on the web."
+                }
+            },
+            "required": ["query"]
+        }
+    }]
+
+    # Build candidate context if a profile exists
+    profile = build_user_profile(user_id)
+    candidate_context = ""
+    if profile:
+        top_skills = ", ".join(profile.all_skills[:8]) or "not listed"
+        candidate_context = f"\n\nCandidate top skills: {top_skills}"
+
+    initial_message = (
+        f"Analyze this job opportunity for a candidate.{candidate_context}\n\n"
+        f"Job Title: {job.title}\n"
+        f"Company: {job.company}\n"
+        f"Location: {job.location or 'Not specified'}\n"
+        f"Notes / Description: {job.notes or 'None provided'}\n\n"
+        f"Steps:\n"
+        f"1. Use search_web to research {job.company} — look for recent news, "
+        f"growth signals, layoffs, culture, or anything a job seeker should know.\n"
+        f"2. Give a verdict: APPLY, SKIP, or RED FLAG.\n"
+        f"3. List 2–3 concise reasons that combine role fit with what you found.\n"
+        f"4. Call out any green flags or concerns."
+    )
+
+    messages = [{"role": "user", "content": initial_message}]
+    tool_calls_log: list = []
+
+    # Agentic loop — exits on end_turn or unexpected stop_reason
+    while True:
+        response = claude.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1000,
+            tools=tools,
+            messages=messages,
+        )
+
+        if response.stop_reason == "end_turn":
+            final_text = next(
+                (block.text for block in response.content if hasattr(block, "text")),
+                "Analysis complete."
+            )
+            break
+
+        if response.stop_reason == "tool_use":
+            # Append Claude's tool_use blocks to the conversation
+            messages.append({"role": "assistant", "content": response.content})
+
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use" and block.name == "search_web":
+                    query = block.input["query"]
+
+                    try:
+                        search_response = tavily.search(
+                            query=query,
+                            search_depth="basic",
+                            max_results=4,
+                        )
+                        raw_results = search_response.get("results", [])
+                        snippets = "\n\n".join(
+                            f"[{r.get('title', '')}]: {r.get('content', '')}"
+                            for r in raw_results
+                        )
+                        results_count = len(raw_results)
+                    except Exception as e:
+                        snippets = f"Search failed: {e}"
+                        results_count = 0
+
+                    tool_calls_log.append({"query": query, "results_count": results_count})
+
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": snippets or "No results found.",
+                    })
+
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        # Unexpected stop_reason — break to avoid infinite loop
+        final_text = "Analysis stopped unexpectedly."
+        break
+
+    return {
+        "analysis": final_text,
+        "tool_calls": tool_calls_log,
+        "job_id": job_id,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Resume parsing
 # ---------------------------------------------------------------------------
 

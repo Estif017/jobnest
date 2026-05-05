@@ -112,7 +112,7 @@ def _top_skills(repos: List[dict]) -> List[str]:
 # Public function
 # ---------------------------------------------------------------------------
 
-def fetch_github_profile(username: str) -> GitHubProfile:
+def fetch_github_profile(username: str, user_id: int = 1) -> GitHubProfile:
     """
     Fetches a user's public GitHub data and returns a populated GitHubProfile.
     Raises ValueError if the username doesn't exist, RuntimeError on API errors.
@@ -128,7 +128,7 @@ def fetch_github_profile(username: str) -> GitHubProfile:
         top_skills=_top_skills(repos),
     )
 
-    save_github_profile(profile)
+    save_github_profile(profile, user_id)
     return profile
 
 
