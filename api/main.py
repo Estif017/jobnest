@@ -89,6 +89,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Starlette doesn't attach CORS headers to unhandled 500s — this handler fixes that.
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    from fastapi.responses import JSONResponse
+    import traceback
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": traceback.format_exc()},
+        headers={"Access-Control-Allow-Origin": "http://localhost:3000"},
+    )
 
 app.include_router(auth_router)
 
@@ -865,6 +875,7 @@ def _run_agent_produce(job: Job, user_id: int) -> dict:
     Returns {"resume_summary": str, "cover_letter": str, "tool_calls": list}.
     Raises RuntimeError on setup failure so callers can decide how to surface it.
     """
+    import anthropic
     import json as _json
     import re as _re
     from tavily import TavilyClient as _Tavily
@@ -1003,6 +1014,7 @@ def jobs_full_hunt(job_id: int, user_id: int = Depends(get_user_id)):
     Orchestrator: one endpoint, one goal — help the user land this job.
     Claude decides which specialist tools to call and in what order.
     """
+    import anthropic
     import json
 
     job = get_job_by_id(job_id, user_id)
@@ -1320,13 +1332,20 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
     """
     Sends a user message to Claude and returns a career coaching reply.
     Saves both the user message and the reply to chat_history.
-    Uses a short system prompt (name + top 5 skills only) and passes the
-    last 4 DB messages as conversation history instead of re-sending the
-    full profile on every request.
+    Uses RAG (ChromaDB + sentence-transformers) to inject the 3 most relevant
+    past messages into the system prompt, giving the coach persistent long-term memory.
     """
     import anthropic
+    from coach_memory import embed_and_store, retrieve_relevant
 
-    # Short system context — name + top 5 skills only (~20 tokens of candidate info)
+    # Persist the user message to SQLite + ChromaDB
+    save_chat_message("user", body.message, user_id)
+    embed_and_store(user_id, body.message, "user")
+
+    # Retrieve 3 most relevant past messages for this user
+    memories = retrieve_relevant(user_id, body.message, n=3)
+
+    # Build system prompt — name + skills + injected long-term memories
     profile = build_user_profile(user_id)
     if profile:
         top5   = ", ".join(profile.all_skills[:5]) or "not listed"
@@ -1339,12 +1358,17 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
         if job:
             system += f" Discussing: {job.title} at {job.company}."
 
-    # Last 4 DB messages as conversation history — gives Claude memory without re-sending the profile
-    history = load_chat_history(limit=4, user_id=user_id)
+    if memories:
+        memory_lines = "\n".join(
+            f"- [{m['role']}]: {m['message'][:200]}"
+            for m in memories
+        )
+        system += f"\n\nWhat you know about this user from past conversations:\n{memory_lines}"
+
+    # Last 4 DB messages as short-term conversation history
+    history  = load_chat_history(limit=4, user_id=user_id)
     messages = [{"role": m["role"], "content": m["message"]} for m in history]
     messages.append({"role": "user", "content": body.message})
-
-    save_chat_message("user", body.message, user_id)
 
     try:
         client   = anthropic.Anthropic()
@@ -1356,6 +1380,7 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
         )
         reply = response.content[0].text
         save_chat_message("assistant", reply, user_id)
+        embed_and_store(user_id, reply, "assistant")
         return CoachChatResponse(reply=reply)
     except Exception as e:
         print(f"[coach/chat error] {e}")
