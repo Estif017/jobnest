@@ -98,6 +98,19 @@ def init_db() -> None:
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notifications (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER REFERENCES users(id),
+            type       TEXT NOT NULL DEFAULT 'job_alert',
+            title      TEXT NOT NULL,
+            body       TEXT NOT NULL DEFAULT '',
+            job_id     INTEGER,
+            read       INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_history (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             role      TEXT NOT NULL,      -- 'user' or 'assistant'

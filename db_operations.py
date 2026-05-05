@@ -636,6 +636,107 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
     return dict(row) if row else None
 
 
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+def create_notification(
+    user_id: int,
+    title: str,
+    body: str = "",
+    type: str = "job_alert",
+    job_id: Optional[int] = None,
+) -> int:
+    """Inserts a new notification row. Returns the new id, or -1 on failure."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    created_at = datetime.now().isoformat()
+    try:
+        cursor.execute(
+            "INSERT INTO notifications (user_id, type, title, body, job_id, read, created_at) "
+            "VALUES (?, ?, ?, ?, ?, 0, ?)",
+            (user_id, type, title, body, job_id, created_at),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.Error:
+        return -1
+    finally:
+        conn.close()
+
+
+def get_notifications(user_id: int, limit: int = 30) -> List[dict]:
+    """Returns the most recent notifications for a user, newest first."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, type, title, body, job_id, read, created_at "
+        "FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+        (user_id, limit),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "id":         row["id"],
+            "type":       row["type"],
+            "title":      row["title"],
+            "body":       row["body"],
+            "job_id":     row["job_id"],
+            "read":       bool(row["read"]),
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def get_unread_count(user_id: int) -> int:
+    """Returns the number of unread notifications for a user."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read = 0",
+        (user_id,),
+    )
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+
+def mark_notification_read(notification_id: int, user_id: int) -> bool:
+    """Marks a single notification as read. Returns True on success."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?",
+            (notification_id, user_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
+def mark_all_notifications_read(user_id: int) -> bool:
+    """Marks all of a user's notifications as read."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE notifications SET read = 1 WHERE user_id = ?",
+            (user_id,),
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
 def get_all_active_users() -> List[dict]:
     """
     Returns every registered user as a list of {id, email} dicts.

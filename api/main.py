@@ -47,6 +47,10 @@ from db_operations import (
     load_chat_history,
     save_onboarding_data,
     load_onboarding_data,
+    get_notifications,
+    get_unread_count,
+    mark_notification_read,
+    mark_all_notifications_read,
     VALID_STATUSES,
 )
 from api.scheduler import start_scheduler, hunt_new_jobs
@@ -154,6 +158,30 @@ def scheduler_run_now():
     """
     hunt_new_jobs()
     return {"message": "Hunt complete. Check server logs for results."}
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+@app.get("/notifications")
+def notifications_list(user_id: int = Depends(get_user_id)):
+    """Returns recent notifications and the unread count for the current user."""
+    items = get_notifications(user_id)
+    unread = get_unread_count(user_id)
+    return {"notifications": items, "unread_count": unread}
+
+
+@app.post("/notifications/read-all", status_code=204)
+def notifications_read_all(user_id: int = Depends(get_user_id)):
+    """Marks every notification as read for the current user."""
+    mark_all_notifications_read(user_id)
+
+
+@app.post("/notifications/{notification_id}/read", status_code=204)
+def notifications_read_one(notification_id: int, user_id: int = Depends(get_user_id)):
+    """Marks a single notification as read."""
+    mark_notification_read(notification_id, user_id)
 
 
 # ---------------------------------------------------------------------------

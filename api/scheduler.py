@@ -17,7 +17,11 @@ from typing import List, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from db_operations import get_all_active_users, load_onboarding_data
+from db_operations import (
+    get_all_active_users,
+    load_onboarding_data,
+    create_notification,
+)
 from smart_scraper import run_smart_search
 from models import ScoredJob
 
@@ -119,6 +123,14 @@ def hunt_new_jobs() -> None:
         )
 
         if high_fit:
+            for s in high_fit:
+                create_notification(
+                    user_id=user_id,
+                    title=f"{s.fit_score}/10 — {s.job.title} at {s.job.company}",
+                    body=s.reasons[0] if s.reasons else s.verdict,
+                    type="job_alert",
+                    job_id=s.job.id,
+                )
             _send_alert(email, high_fit)
 
     logger.info("=== Hunt complete ===")

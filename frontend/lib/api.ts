@@ -134,6 +134,38 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
 // Dashboard
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+export interface AppNotification {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  job_id: number | null;
+  read: boolean;
+  created_at: string;
+}
+
+export interface NotificationsResponse {
+  notifications: AppNotification[];
+  unread_count: number;
+}
+
+export const fetchNotifications = (): Promise<NotificationsResponse> =>
+  apiFetch("/notifications");
+
+export const markNotificationRead = (id: number): Promise<void> =>
+  apiFetch(`/notifications/${id}/read`, { method: "POST" });
+
+export const markAllNotificationsRead = (): Promise<void> =>
+  apiFetch("/notifications/read-all", { method: "POST" });
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+
 export const fetchDashboardStats = (): Promise<DashboardStats> =>
   apiFetch("/dashboard/stats");
 
