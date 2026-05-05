@@ -49,6 +49,7 @@ from db_operations import (
     load_onboarding_data,
     VALID_STATUSES,
 )
+from api.scheduler import start_scheduler, hunt_new_jobs
 from models import Job
 from ai_coach import analyze_job, build_user_profile
 from github_parser import fetch_github_profile
@@ -88,9 +89,18 @@ app.include_router(auth_router)
 
 @app.on_event("startup")
 def startup():
-    """Initialize the SQLite database and all tables when the server starts."""
+    """Initialize the database and start the background job hunter."""
     init_db()
     migrate_db()
+    app.state.scheduler = start_scheduler()
+
+
+@app.on_event("shutdown")
+def shutdown():
+    """Shut down the background scheduler cleanly when the server exits."""
+    scheduler = getattr(app.state, "scheduler", None)
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +124,36 @@ def get_user_id(x_user_id: Optional[str] = Header(None)) -> int:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Scheduler — status and manual trigger
+# ---------------------------------------------------------------------------
+
+@app.get("/scheduler/status")
+def scheduler_status():
+    """
+    Returns the next scheduled hunt time and whether the scheduler is running.
+    Useful for verifying the background hunter is alive.
+    """
+    scheduler = getattr(app.state, "scheduler", None)
+    if scheduler is None or not scheduler.running:
+        return {"running": False, "next_run": None}
+
+    job = scheduler.get_job("job_hunter")
+    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+    return {"running": True, "next_run": next_run}
+
+
+@app.post("/scheduler/run-now")
+def scheduler_run_now():
+    """
+    Triggers the job hunt immediately without waiting for the 24-hour interval.
+    Runs synchronously in the request — expect it to take 30-60 seconds.
+    Use this to test the full pipeline without changing the interval.
+    """
+    hunt_new_jobs()
+    return {"message": "Hunt complete. Check server logs for results."}
 
 
 # ---------------------------------------------------------------------------

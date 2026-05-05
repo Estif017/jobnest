@@ -636,6 +636,19 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def get_all_active_users() -> List[dict]:
+    """
+    Returns every registered user as a list of {id, email} dicts.
+    Used by the scheduler to iterate users and hunt jobs on their behalf.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, email FROM users ORDER BY id")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": row["id"], "email": row["email"]} for row in rows]
+
+
 def set_onboarding_complete(user_id: int) -> bool:
     """Marks the user's onboarding as done. Returns True on success."""
     conn = get_connection()

@@ -4,3 +4,4 @@ python-dotenv
 pydantic
 python-multipart
 tavily-python
+apscheduler
