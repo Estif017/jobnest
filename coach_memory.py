@@ -1,117 +1,116 @@
 """
-coach_memory.py — RAG memory for the JobNest coach.
+coach_memory.py — RAG persistent memory for the JobNest coach.
 
-Embeds every coach message (user + assistant) into a local ChromaDB collection
-using sentence-transformers (all-MiniLM-L6-v2). Before each coach response,
-retrieves the 3 most semantically relevant past messages for that user and
-injects them into the system prompt so the coach remembers across sessions.
+Stores every coach message as a dense vector (all-MiniLM-L6-v2) in a per-user
+pickle file under ./coach_vectors/. Before each response, runs cosine similarity
+against all stored vectors to retrieve the 3 most relevant past messages.
+
+No external vector database required — numpy is sufficient at this scale.
 """
 
 from __future__ import annotations
 
 import os
+import pickle
 from datetime import datetime, timezone
 from typing import List, Dict
 
+import numpy as np
+
 # ---------------------------------------------------------------------------
-# Singletons — model and DB client are loaded once on first use
+# Paths + singleton model
 # ---------------------------------------------------------------------------
 
+_VECTORS_DIR = os.path.join(os.path.dirname(__file__), "coach_vectors")
 _model = None
-_chroma_client = None
-_collection = None
-
-_CHROMA_PATH = os.path.join(os.path.dirname(__file__), "chroma_db")
-_COLLECTION_NAME = "coach_memory"
 
 
-def _get_collection():
-    global _model, _chroma_client, _collection
-    if _collection is not None:
-        return _collection
+def _get_model():
+    global _model
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
+        _model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _model
 
-    from sentence_transformers import SentenceTransformer
-    import chromadb
 
-    _model = SentenceTransformer("all-MiniLM-L6-v2")
-    _chroma_client = chromadb.PersistentClient(path=_CHROMA_PATH)
-    _collection = _chroma_client.get_or_create_collection(
-        name=_COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"},
-    )
-    return _collection
+def _user_path(user_id: int) -> str:
+    os.makedirs(_VECTORS_DIR, exist_ok=True)
+    return os.path.join(_VECTORS_DIR, f"user_{user_id}.pkl")
+
+
+def _load(user_id: int) -> list:
+    path = _user_path(user_id)
+    if not os.path.exists(path):
+        return []
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+
+def _save(user_id: int, entries: list) -> None:
+    with open(_user_path(user_id), "wb") as f:
+        pickle.dump(entries, f)
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
+def warm_up() -> None:
+    """Pre-load the embedding model at server startup so the first request is instant."""
+    try:
+        _get_model()
+        print("[coach_memory] Embedding model ready.")
+    except Exception as e:
+        print(f"[coach_memory] Warm-up failed: {e}")
+
+
 def embed_and_store(user_id: int, message: str, role: str) -> None:
-    """
-    Embed a single coach message and persist it in ChromaDB.
-    Called after every user message and assistant reply.
-    """
+    """Embed a message and append it to this user's vector store."""
     if not message or not message.strip():
         return
-
     try:
-        collection = _get_collection()
-        timestamp = datetime.now(timezone.utc).isoformat()
-        doc_id = f"{user_id}_{timestamp}_{role}"
-
-        embedding = _model.encode(message).tolist()
-
-        collection.add(
-            ids=[doc_id],
-            embeddings=[embedding],
-            documents=[message],
-            metadatas=[{
-                "user_id": str(user_id),
-                "role": role,
-                "timestamp": timestamp,
-            }],
-        )
+        embedding = _get_model().encode(message)
+        entries = _load(user_id)
+        entries.append({
+            "message":   message,
+            "role":      role,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "embedding": embedding,
+        })
+        _save(user_id, entries)
     except Exception as e:
-        # Never crash the chat flow over a memory write failure
         print(f"[coach_memory] embed_and_store failed: {e}")
 
 
 def retrieve_relevant(user_id: int, query: str, n: int = 3) -> List[Dict[str, str]]:
     """
-    Search ChromaDB for the n most semantically relevant past messages for
-    this user. Returns a list of {"role": str, "message": str, "timestamp": str},
-    sorted by relevance (closest first). Returns [] on any failure.
+    Return the n most semantically relevant past messages for this user.
+    Each result is {"role": str, "message": str, "timestamp": str}.
     """
     if not query or not query.strip():
         return []
-
     try:
-        collection = _get_collection()
-
-        total = collection.count()
-        if total == 0:
+        entries = _load(user_id)
+        if not entries:
             return []
 
-        embedding = _model.encode(query).tolist()
+        query_vec = _get_model().encode(query)
+        matrix    = np.stack([e["embedding"] for e in entries])
 
-        results = collection.query(
-            query_embeddings=[embedding],
-            n_results=min(n, total),
-            where={"user_id": str(user_id)},
-        )
+        # Cosine similarity: dot product of unit vectors
+        q_norm = query_vec / (np.linalg.norm(query_vec) + 1e-10)
+        m_norm = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-10)
+        scores = m_norm @ q_norm
 
-        docs = results.get("documents", [[]])[0]
-        metas = results.get("metadatas", [[]])[0]
-
-        memories = []
-        for doc, meta in zip(docs, metas):
-            memories.append({
-                "role":      meta.get("role", "unknown"),
-                "message":   doc,
-                "timestamp": meta.get("timestamp", ""),
-            })
-        return memories
-
+        top_idx = np.argsort(scores)[::-1][:n]
+        return [
+            {
+                "role":      entries[i]["role"],
+                "message":   entries[i]["message"],
+                "timestamp": entries[i]["timestamp"],
+            }
+            for i in top_idx
+        ]
     except Exception as e:
         print(f"[coach_memory] retrieve_relevant failed: {e}")
         return []

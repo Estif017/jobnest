@@ -5,5 +5,4 @@ pydantic
 python-multipart
 tavily-python
 apscheduler
-chromadb
 sentence-transformers

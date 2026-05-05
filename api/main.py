@@ -111,9 +111,8 @@ def startup():
     app.state.scheduler = start_scheduler()
     # Pre-warm sentence-transformers so the first coach message isn't slow
     try:
-        from coach_memory import _get_collection
-        _get_collection()
-        print("[startup] Coach RAG memory warmed up.")
+        from coach_memory import warm_up
+        warm_up()
     except Exception as e:
         print(f"[startup] Coach RAG warm-up skipped: {e}")
 
