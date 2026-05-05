@@ -7,6 +7,14 @@
  * calls in components.
  */
 
+// ---------------------------------------------------------------------------
+// User ID injection — set once from the session, sent on every request
+// ---------------------------------------------------------------------------
+let _userId = "1";
+export function setApiUserId(id: string | undefined) {
+  _userId = id ?? "1";
+}
+
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ---------------------------------------------------------------------------
@@ -84,9 +92,14 @@ export interface JobUpdate {
 // ---------------------------------------------------------------------------
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const { headers: initHeaders, ...rest } = init ?? {};
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-Id": _userId,
+      ...(initHeaders as Record<string, string> | undefined),
+    },
+    ...rest,
   });
 
   if (!res.ok) {
@@ -100,6 +113,20 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   // 204 No Content — return empty object
   if (res.status === 204) return {} as T;
+  return res.json();
+}
+
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "X-User-Id": _userId },
+    body: formData,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try { const b = await res.json(); detail = b.detail ?? detail; } catch {}
+    throw new Error(detail);
+  }
   return res.json();
 }
 
@@ -147,6 +174,18 @@ export const analyzeJob = (jobId: number): Promise<JobAnalysis> =>
   apiFetch(`/jobs/${jobId}/analyze`, { method: "POST" });
 
 // ---------------------------------------------------------------------------
+// Company news (agentic web search)
+// ---------------------------------------------------------------------------
+
+export interface CompanyNews {
+  company: string;
+  bullets: string[];
+}
+
+export const fetchCompanyNews = (jobId: number): Promise<CompanyNews> =>
+  apiFetch(`/jobs/${jobId}/company-news`);
+
+// ---------------------------------------------------------------------------
 // Scrape
 // ---------------------------------------------------------------------------
 
@@ -161,8 +200,33 @@ export const scrapeJobs = (
   });
 
 // ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export const registerUser = (email: string, password: string): Promise<{ message: string }> =>
+  apiFetch("/auth/register", {
+    method: "POST",
+    body:   JSON.stringify({ email, password }),
+  });
+
+export const markOnboardingComplete = (userId: string): Promise<{ message: string }> =>
+  apiFetch("/auth/onboarding-complete", {
+    method: "POST",
+    body:   JSON.stringify({ user_id: Number(userId) }),
+  });
+
+// ---------------------------------------------------------------------------
 // Coach chat
 // ---------------------------------------------------------------------------
+
+export interface ChatHistoryMessage {
+  role:      string;   // 'user' or 'assistant'
+  message:   string;
+  timestamp: string;
+}
+
+export const fetchCoachHistory = (): Promise<ChatHistoryMessage[]> =>
+  apiFetch("/coach/history");
 
 export const coachChat = (message: string, jobId?: number): Promise<{ reply: string }> =>
   apiFetch("/coach/chat", {
@@ -182,3 +246,43 @@ export const fetchGitHubProfile = (username: string): Promise<GitHubProfile> =>
     method: "POST",
     body: JSON.stringify({ username }),
   });
+
+// ---------------------------------------------------------------------------
+// Onboarding
+// ---------------------------------------------------------------------------
+
+export interface OnboardingData {
+  target_role:        string;
+  target_industries:  string[];
+  seniority_level:    string;
+  employment_types:   string[];
+  work_model:         string;
+  current_location:   string;
+  open_to_relocation: boolean;
+  salary_min:         number;
+  salary_max:         number;
+  salary_currency:    string;
+  years_experience:   string;
+  top_skills_manual:  string[];
+  certifications:     string;
+  linkedin_url:       string;
+  portfolio_url:      string;
+  github_username:    string;
+  name?:              string;
+  skills?:            string[];
+}
+
+export const fetchOnboardingData = (): Promise<OnboardingData> =>
+  apiFetch("/onboarding/data");
+
+export const saveOnboardingData = (data: Partial<OnboardingData>): Promise<{ message: string }> =>
+  apiFetch("/onboarding/save", {
+    method: "POST",
+    body:   JSON.stringify(data),
+  });
+
+export const uploadResume = (file: File): Promise<{ name: string; skills: string[]; experience_count: number; education_count: number }> => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return apiUpload("/parse-resume", fd);
+};

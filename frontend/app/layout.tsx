@@ -4,7 +4,7 @@ import "./globals.css";
 import Providers from "./providers";
 import Sidebar from "@/components/Sidebar";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "JobNest",
@@ -18,10 +18,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-[#0a0a0a] text-white antialiased`}>
+      <body className={`${inter.variable} font-sans bg-base text-ink antialiased`}>
         <Providers>
           <Sidebar />
-          <main className="ml-56 min-h-screen p-8">{children}</main>
+          <main className="ml-60 min-h-screen p-8">{children}</main>
         </Providers>
       </body>
     </html>

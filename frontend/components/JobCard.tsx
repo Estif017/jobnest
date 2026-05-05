@@ -8,38 +8,43 @@ interface JobCardProps {
 }
 
 const verdictStyle: Record<string, string> = {
-  APPLY: "text-green-400 bg-green-400/10",
-  SKIP: "text-yellow-400 bg-yellow-400/10",
-  "RED FLAG": "text-red-400 bg-red-400/10",
+  APPLY:      "text-emerald-700 bg-emerald-50 border-emerald-200",
+  SKIP:       "text-amber-700 bg-amber-50 border-amber-200",
+  "RED FLAG": "text-rose-700 bg-rose-50 border-rose-200",
 };
 
 export default function JobCard({ job, onSave }: JobCardProps) {
-  const style = verdictStyle[job.verdict] ?? "text-[#a3a3a3] bg-[#1f1f1f]";
+  const hasVerdict = job.verdict && job.verdict !== "PENDING";
+  const style = verdictStyle[job.verdict] ?? "text-ink-secondary bg-elevated border-border";
+
   return (
-    <div className="bg-[#111111] border border-[#1f1f1f] rounded-lg p-4 flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-white font-semibold text-sm leading-snug">{job.job.title}</p>
-          <p className="text-[#a3a3a3] text-xs mt-0.5">{job.job.company}</p>
+    <div className="card p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-ink text-sm leading-snug truncate">{job.job.title}</p>
+          <p className="text-ink-muted text-xs mt-0.5 truncate">{job.job.company}</p>
         </div>
-        <FitScore score={job.fit_score} />
+        <FitScore score={job.fit_score || null} />
       </div>
-      <span className={`self-start px-2 py-0.5 rounded text-xs font-medium ${style}`}>
-        {job.verdict}
-      </span>
-      <div className="flex gap-2 mt-auto">
+
+      {hasVerdict ? (
+        <span className={`self-start px-2.5 py-0.5 rounded-full text-xs font-medium border ${style}`}>
+          {job.verdict}
+        </span>
+      ) : (
+        <span className="self-start px-2.5 py-0.5 rounded-full text-xs font-medium border text-ink-muted bg-elevated border-border">
+          Not scored
+        </span>
+      )}
+
+      <div className="flex gap-2 mt-auto pt-1">
         {onSave && (
-          <button
-            onClick={() => onSave(job)}
-            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded transition-colors"
-          >
+          <button onClick={() => onSave(job)} className="btn-primary text-xs py-1.5 px-3">
             Save
           </button>
         )}
-        <Link
-          href={`/jobs/${job.id}`}
-          className="text-xs bg-[#1f1f1f] hover:bg-[#2a2a2a] text-white px-3 py-1.5 rounded transition-colors"
-        >
+        {/* Use job.job.id — job.id is the ScoredJob wrapper id (0 when unscored) */}
+        <Link href={`/jobs/${job.job.id}`} className="btn-ghost text-xs py-1.5 px-3">
           View Detail
         </Link>
       </div>

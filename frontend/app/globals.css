@@ -2,18 +2,73 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg-base: #0a0a0a;
-  --bg-surface: #111111;
-  --bg-elevated: #1f1f1f;
-  --text-primary: #ffffff;
-  --text-secondary: #a3a3a3;
-  --text-muted: #525252;
-  --border: #1f1f1f;
-  --accent: #2563eb;
+@layer base {
+  :root {
+    --bg-base:         #F8FAFB;
+    --bg-surface:      #FFFFFF;
+    --bg-elevated:     #F1F5F9;
+    --text-primary:    #0F172A;
+    --text-secondary:  #475569;
+    --text-muted:      #94A3B8;
+    --border:          #E2E8F0;
+    --border-subtle:   #F1F5F9;
+    --accent:          #0D9488;
+    --accent-light:    #F0FDFA;
+    --ai:              #6366F1;
+    --ai-light:        #EEF2FF;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Scrollbar — slim and neutral */
+  ::-webkit-scrollbar        { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track  { background: transparent; }
+  ::-webkit-scrollbar-thumb  { background: #CBD5E1; border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 }
 
-body {
-  background: var(--bg-base);
-  color: var(--text-primary);
+@layer components {
+  /* Card surface */
+  .card {
+    @apply bg-surface rounded-2xl shadow-card border border-border/60;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-600 text-white text-sm font-medium
+           hover:bg-accent-700 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500/40
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* Ghost button */
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl text-ink-secondary text-sm font-medium
+           hover:bg-elevated transition-colors focus:outline-none focus:ring-2 focus:ring-border
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* Form input */
+  .input {
+    @apply w-full px-3 py-2.5 rounded-xl border border-border bg-surface text-ink text-sm
+           placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent-500/30
+           focus:border-accent-500 transition;
+  }
+
+  /* Section label */
+  .label {
+    @apply block text-xs font-medium text-ink-muted uppercase tracking-wider mb-1.5;
+  }
 }

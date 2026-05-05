@@ -11,9 +11,14 @@ no separate setup step required. Run with: uvicorn api.main:app --reload --port 
 
 import sys
 import os
+import tempfile
 import warnings
 from collections import Counter
 from typing import List, Optional
+from dotenv import load_dotenv
+
+# Load .env before anything else so os.getenv() picks up all keys
+load_dotenv()
 
 # Suppress Google auth FutureWarnings about Python 3.9 end-of-life — noise only
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -22,10 +27,12 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # work when uvicorn is launched from the project root directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
+from fastapi import File as FastFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import init_db
+from database import init_db, migrate_db
+from api.auth_routes import router as auth_router
 from db_operations import (
     get_all_jobs,
     get_job_by_id,
@@ -35,18 +42,25 @@ from db_operations import (
     search_jobs,
     load_analysis,
     load_github_profile,
+    save_github_profile,
+    save_chat_message,
+    load_chat_history,
+    save_onboarding_data,
+    load_onboarding_data,
     VALID_STATUSES,
 )
 from models import Job
 from ai_coach import analyze_job, build_user_profile
 from github_parser import fetch_github_profile
+from resume_parser import parse_resume as do_parse_resume
 from smart_scraper import run_smart_search
 
 from api.schemas import (
     JobCreate, JobUpdate, ScrapeRequest, GitHubFetchRequest,
-    CoachChatRequest, CoachChatResponse,
+    CoachChatRequest, CoachChatResponse, ChatMessage,
     JobResponse, JobAnalysisResponse, GitHubProfileResponse,
     ScoredJobResponse, DashboardStats,
+    OnboardingDataRequest, OnboardingDataResponse,
     job_to_dict, analysis_to_dict, github_to_dict, scored_job_to_dict,
 )
 
@@ -69,10 +83,28 @@ app.add_middleware(
 )
 
 
+app.include_router(auth_router)
+
+
 @app.on_event("startup")
 def startup():
     """Initialize the SQLite database and all tables when the server starts."""
     init_db()
+    migrate_db()
+
+
+# ---------------------------------------------------------------------------
+# User ID dependency — reads X-User-Id header, defaults to 1 for CLI compat
+# ---------------------------------------------------------------------------
+
+def get_user_id(x_user_id: Optional[str] = Header(None)) -> int:
+    """Reads user id from X-User-Id request header. Defaults to 1 for CLI backward compat."""
+    if x_user_id is None:
+        return 1
+    try:
+        return int(x_user_id)
+    except (ValueError, TypeError):
+        return 1
 
 
 # ---------------------------------------------------------------------------
@@ -89,15 +121,14 @@ def health():
 # ---------------------------------------------------------------------------
 
 @app.get("/dashboard/stats", response_model=DashboardStats)
-def dashboard_stats():
+def dashboard_stats(user_id: int = Depends(get_user_id)):
     """
     Returns aggregated job counts for the dashboard stats row.
     Computes everything from get_all_jobs() — no separate query needed.
     """
-    jobs   = get_all_jobs()
+    jobs   = get_all_jobs(user_id)
     counts = Counter(j.status for j in jobs)
 
-    # Best fit score across all jobs that have been analyzed
     return DashboardStats(
         total_jobs=len(jobs),
         applied_count=counts.get("Applied", 0),
@@ -111,32 +142,32 @@ def dashboard_stats():
 # ---------------------------------------------------------------------------
 
 @app.get("/jobs/search", response_model=List[JobResponse])
-def jobs_search(keyword: str = "", status: str = ""):
+def jobs_search(keyword: str = "", status: str = "", user_id: int = Depends(get_user_id)):
     """
     Searches jobs by keyword (title/company/notes) and/or status.
     Both params are optional — omitting both returns all jobs.
     """
-    jobs = search_jobs(keyword=keyword, status=status)
+    jobs = search_jobs(keyword=keyword, status=status, user_id=user_id)
     return [JobResponse(**job_to_dict(j)) for j in jobs]
 
 
 @app.get("/jobs", response_model=List[JobResponse])
-def jobs_list():
+def jobs_list(user_id: int = Depends(get_user_id)):
     """Returns all saved jobs ordered by database insertion."""
-    return [JobResponse(**job_to_dict(j)) for j in get_all_jobs()]
+    return [JobResponse(**job_to_dict(j)) for j in get_all_jobs(user_id)]
 
 
 @app.get("/jobs/{job_id}", response_model=JobResponse)
-def jobs_get(job_id: int):
+def jobs_get(job_id: int, user_id: int = Depends(get_user_id)):
     """Returns a single job by id. 404 if not found."""
-    job = get_job_by_id(job_id)
+    job = get_job_by_id(job_id, user_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
     return JobResponse(**job_to_dict(job))
 
 
 @app.post("/jobs", response_model=JobResponse, status_code=201)
-def jobs_create(body: JobCreate):
+def jobs_create(body: JobCreate, user_id: int = Depends(get_user_id)):
     """Creates a new job. Returns the saved job with its assigned id."""
     job = Job(
         title=body.title,
@@ -146,12 +177,12 @@ def jobs_create(body: JobCreate):
         status=body.status,
         notes=body.notes,
     )
-    success = add_job(job)
+    success = add_job(job, user_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save job.")
 
     # Fetch back the saved row to return the real database id
-    saved = search_jobs(keyword=body.title)
+    saved = search_jobs(keyword=body.title, user_id=user_id)
     if not saved:
         raise HTTPException(status_code=500, detail="Job saved but could not be retrieved.")
 
@@ -160,7 +191,7 @@ def jobs_create(body: JobCreate):
 
 
 @app.put("/jobs/{job_id}", response_model=JobResponse)
-def jobs_update(job_id: int, body: JobUpdate):
+def jobs_update(job_id: int, body: JobUpdate, user_id: int = Depends(get_user_id)):
     """
     Updates one or more fields of a job. Only non-null fields in the body
     are applied — omitting a field leaves it unchanged in the database.
@@ -170,18 +201,18 @@ def jobs_update(job_id: int, body: JobUpdate):
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update.")
 
-    success = update_job(job_id, **fields)
+    success = update_job(job_id, user_id, **fields)
     if not success:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
-    job = get_job_by_id(job_id)
+    job = get_job_by_id(job_id, user_id)
     return JobResponse(**job_to_dict(job))
 
 
 @app.delete("/jobs/{job_id}", status_code=204)
-def jobs_delete(job_id: int):
+def jobs_delete(job_id: int, user_id: int = Depends(get_user_id)):
     """Permanently deletes a job by id. 404 if the id doesn't exist."""
-    success = delete_job(job_id)
+    success = delete_job(job_id, user_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
@@ -191,26 +222,26 @@ def jobs_delete(job_id: int):
 # ---------------------------------------------------------------------------
 
 @app.get("/jobs/{job_id}/analysis", response_model=JobAnalysisResponse)
-def jobs_get_analysis(job_id: int):
+def jobs_get_analysis(job_id: int, user_id: int = Depends(get_user_id)):
     """Returns the most recent AI analysis for a job. 404 if none exists yet."""
-    analysis = load_analysis(job_id)
+    analysis = load_analysis(job_id, user_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail=f"No analysis found for job {job_id}.")
     return JobAnalysisResponse(**analysis_to_dict(analysis))
 
 
 @app.post("/jobs/{job_id}/analyze", response_model=JobAnalysisResponse)
-def jobs_analyze(job_id: int):
+def jobs_analyze(job_id: int, user_id: int = Depends(get_user_id)):
     """
     Runs AI analysis on a job using the stored user profile.
     Fetches the job and profile from the database, calls analyze_job(),
-    saves the result, and returns the full JobAnalysis. Requires GEMINI_API_KEY.
+    saves the result, and returns the full JobAnalysis. Requires ANTHROPIC_API_KEY.
     """
-    job = get_job_by_id(job_id)
+    job = get_job_by_id(job_id, user_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
-    profile = build_user_profile()
+    profile = build_user_profile(user_id)
     if profile is None:
         raise HTTPException(
             status_code=400,
@@ -218,7 +249,7 @@ def jobs_analyze(job_id: int):
         )
 
     try:
-        analysis = analyze_job(job, profile)
+        analysis = analyze_job(job, profile, user_id)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -226,14 +257,148 @@ def jobs_analyze(job_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Company news — "Give the Agent Eyes"
+#
+# How this works (agentic pattern):
+#   1. PERCEIVE  — receive the job_id from the frontend
+#   2. ACT       — call Tavily (web search tool) to find recent news
+#   3. SYNTHESIZE — feed raw search results to Claude, ask for 3 bullets
+#   4. RESPOND   — return structured bullets to the frontend
+#
+# Tavily is purpose-built for AI agents: it returns clean, pre-filtered
+# text snippets rather than raw HTML, so the LLM gets signal, not noise.
+# ---------------------------------------------------------------------------
+
+@app.get("/jobs/{job_id}/company-news")
+def company_news(job_id: int, user_id: int = Depends(get_user_id)):
+    """
+    Searches the web for recent news about the job's company and returns
+    a 3-bullet summary generated by Claude. Requires TAVILY_API_KEY and
+    ANTHROPIC_API_KEY in the environment.
+    """
+    import anthropic
+    from tavily import TavilyClient
+
+    # Step 1 — get the company name from the database
+    job = get_job_by_id(job_id, user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+    company = job.company.strip()
+
+    # Step 2 — use Tavily to search the web (the "eyes")
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    if not tavily_key:
+        raise HTTPException(status_code=500, detail="TAVILY_API_KEY not set.")
+
+    tavily = TavilyClient(api_key=tavily_key)
+    try:
+        results = tavily.search(
+            query=f"{company} company news 2024 2025",
+            search_depth="basic",
+            max_results=5,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Web search failed: {e}")
+
+    # Step 3 — extract the text snippets from Tavily's results
+    snippets = "\n\n".join(
+        f"- {r.get('title', '')}: {r.get('content', '')}"
+        for r in results.get("results", [])
+    )
+
+    if not snippets:
+        return {"company": company, "bullets": ["No recent news found for this company."]}
+
+    # Step 4 — ask Claude to synthesize into 3 clean bullets
+    anthropic_client = anthropic.Anthropic()
+    prompt = (
+        f"Here are recent web search results about the company '{company}':\n\n"
+        f"{snippets}\n\n"
+        f"Write exactly 3 short bullet points summarizing the most relevant and recent "
+        f"news about this company from a job seeker's perspective. "
+        f"Focus on: funding, layoffs, growth, leadership changes, product launches, or culture. "
+        f"Each bullet should be one sentence. Return only the 3 bullets, no intro text."
+    )
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        # Parse bullets — strip leading "- " or "• " or "1. " markers
+        bullets = [
+            line.lstrip("-•123. ").strip()
+            for line in raw.split("\n")
+            if line.strip() and not line.strip().isdigit()
+        ][:3]
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Claude summarization failed: {e}")
+
+    return {"company": company, "bullets": bullets}
+
+
+# ---------------------------------------------------------------------------
+# Resume parsing
+# ---------------------------------------------------------------------------
+
+@app.post("/parse-resume")
+async def parse_resume_endpoint(
+    file: UploadFile = FastFile(...),
+    user_id: int = Depends(get_user_id),
+):
+    """Uploads a PDF resume, parses it, saves to SQLite, and returns a summary."""
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    try:
+        profile = do_parse_resume(tmp_path, user_id=user_id)
+        return {
+            "name": profile.name,
+            "skills": profile.skills,
+            "experience_count": len(profile.experience),
+            "education_count": len(profile.education),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        os.unlink(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Onboarding
+# ---------------------------------------------------------------------------
+
+@app.post("/onboarding/save")
+def onboarding_save(body: OnboardingDataRequest, user_id: int = Depends(get_user_id)):
+    """Saves onboarding profile fields for the authenticated user."""
+    save_onboarding_data(user_id, body.model_dump())
+    return {"message": "Onboarding data saved."}
+
+
+@app.get("/onboarding/data", response_model=OnboardingDataResponse)
+def onboarding_data(user_id: int = Depends(get_user_id)):
+    """Returns onboarding profile fields for the authenticated user."""
+    data = load_onboarding_data(user_id)
+    if data is None:
+        return OnboardingDataResponse()
+    return OnboardingDataResponse(**data)
+
+
+# ---------------------------------------------------------------------------
 # Live scrape
 # ---------------------------------------------------------------------------
 
 @app.post("/scrape", response_model=List[ScoredJobResponse])
-def scrape(body: ScrapeRequest):
+def scrape(body: ScrapeRequest, user_id: int = Depends(get_user_id)):
     """
     Searches RemoteOK for live job listings matching the query, saves new ones
-    to the tracker, and optionally scores them with Gemini (score=true).
+    to the tracker, and optionally scores them with AI (score=true).
     Returns the list of saved/scored jobs.
     """
     try:
@@ -241,17 +406,24 @@ def scrape(body: ScrapeRequest):
             query=body.query,
             location=body.location,
             score=body.score,
+            user_id=user_id,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # scored only contains newly inserted jobs; also return existing DB matches
-    # so the frontend never shows an empty list when jobs already exist.
+    # scored only contains newly inserted jobs; also return existing DB matches.
+    # search_jobs() does a phrase-LIKE which misses jobs matched by individual
+    # keywords (e.g. "software engineer" won't match title "Senior Engineer").
+    # Use per-word matching instead — same logic RemoteOK uses when scraping.
     from models import ScoredJob as ScoredJobModel
     scored_ids = {s.job.id for s in scored}
-    all_matching = search_jobs(keyword=body.query)
-    for job in all_matching:
-        if job.id not in scored_ids:
+    words = [w.lower() for w in body.query.split() if w]
+    for job in get_all_jobs(user_id):
+        if job.id in scored_ids:
+            continue
+        searchable = f"{job.title} {job.company} {job.notes or ''}".lower()
+        if any(w in searchable for w in words):
+            scored_ids.add(job.id)
             scored.append(ScoredJobModel(job=job))
 
     return [ScoredJobResponse(**scored_job_to_dict(s)) for s in scored]
@@ -262,74 +434,80 @@ def scrape(body: ScrapeRequest):
 # ---------------------------------------------------------------------------
 
 @app.get("/github", response_model=GitHubProfileResponse)
-def github_get():
+def github_get(user_id: int = Depends(get_user_id)):
     """Returns the stored GitHub profile. 404 if none has been fetched yet."""
-    profile = load_github_profile()
+    profile = load_github_profile(user_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="No GitHub profile found.")
     return GitHubProfileResponse(**github_to_dict(profile))
 
 
-@app.post("/coach/chat", response_model=CoachChatResponse)
-def coach_chat(body: CoachChatRequest):
-    """
-    Sends a user message to Claude and returns a career coaching reply.
-    Optionally accepts a job_id to include that job as context in the prompt.
-    Reads ANTHROPIC_API_KEY from the environment automatically.
-    """
-    import anthropic
-
-    context_parts = []
-
-    profile = build_user_profile()
-    if profile:
-        skills = ", ".join(profile.all_skills[:15]) or "None listed"
-        exp = "; ".join(
-            f"{e.title} at {e.company}" for e in profile.resume.experience[:3]
-        ) or "None listed"
-        context_parts.append(
-            f"Candidate: {profile.resume.name}\nSkills: {skills}\nExperience: {exp}"
-        )
-
-    if body.job_id:
-        job = get_job_by_id(body.job_id)
-        if job:
-            context_parts.append(
-                f"Job being discussed: {job.title} at {job.company} ({job.location or 'Remote'})\n"
-                f"Status: {job.status}\nNotes: {job.notes or 'None'}"
-            )
-
-    system = (
-        "You are a career coach helping a job seeker. "
-        "Be concise, practical, and encouraging. "
-        "If candidate or job context is provided, use it to give specific advice."
-    )
-
-    user_message = "\n\n".join(context_parts + [body.message]) if context_parts else body.message
-
-    try:
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=500,
-            system=system,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        return CoachChatResponse(reply=response.content[0].text)
-    except Exception as e:
-        print(f"[coach/chat error] {e}")
-        return CoachChatResponse(reply=f"Coach unavailable: {e}")
-
-
 @app.post("/github/fetch", response_model=GitHubProfileResponse)
-def github_fetch(body: GitHubFetchRequest):
+def github_fetch(body: GitHubFetchRequest, user_id: int = Depends(get_user_id)):
     """
     Fetches a GitHub user's public profile via the GitHub API and saves it.
     Raises 400 if the username doesn't exist or the API call fails.
     """
     try:
-        profile = fetch_github_profile(body.username)
+        profile = fetch_github_profile(body.username, user_id=user_id)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return GitHubProfileResponse(**github_to_dict(profile))
+
+
+# ---------------------------------------------------------------------------
+# Coach
+# ---------------------------------------------------------------------------
+
+@app.get("/coach/history", response_model=List[ChatMessage])
+def coach_history(user_id: int = Depends(get_user_id)):
+    """Returns the last 20 coach chat messages, oldest first."""
+    return [ChatMessage(**m) for m in load_chat_history(limit=20, user_id=user_id)]
+
+
+@app.post("/coach/chat", response_model=CoachChatResponse)
+def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
+    """
+    Sends a user message to Claude and returns a career coaching reply.
+    Saves both the user message and the reply to chat_history.
+    Uses a short system prompt (name + top 5 skills only) and passes the
+    last 4 DB messages as conversation history instead of re-sending the
+    full profile on every request.
+    """
+    import anthropic
+
+    # Short system context — name + top 5 skills only (~20 tokens of candidate info)
+    profile = build_user_profile(user_id)
+    if profile:
+        top5   = ", ".join(profile.all_skills[:5]) or "not listed"
+        system = f"Career coach. Candidate: {profile.resume.name}. Top skills: {top5}. Be concise and practical."
+    else:
+        system = "Career coach helping a job seeker. Be concise and practical."
+
+    if body.job_id:
+        job = get_job_by_id(body.job_id, user_id)
+        if job:
+            system += f" Discussing: {job.title} at {job.company}."
+
+    # Last 4 DB messages as conversation history — gives Claude memory without re-sending the profile
+    history = load_chat_history(limit=4, user_id=user_id)
+    messages = [{"role": m["role"], "content": m["message"]} for m in history]
+    messages.append({"role": "user", "content": body.message})
+
+    save_chat_message("user", body.message, user_id)
+
+    try:
+        client   = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system=system,
+            messages=messages,
+        )
+        reply = response.content[0].text
+        save_chat_message("assistant", reply, user_id)
+        return CoachChatResponse(reply=reply)
+    except Exception as e:
+        print(f"[coach/chat error] {e}")
+        return CoachChatResponse(reply=f"Coach unavailable: {e}")

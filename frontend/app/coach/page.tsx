@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Header from "@/components/Header";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { coachChat } from "@/lib/api";
+import { coachChat, fetchCoachHistory } from "@/lib/api";
 
 interface Message {
   role: "user" | "coach";
@@ -17,12 +16,51 @@ const SUGGESTIONS = [
   "Help me write a cold email to a recruiter.",
 ];
 
+function CoachAvatar() {
+  return (
+    <div className="w-7 h-7 rounded-full bg-ai-50 border border-ai-100 flex items-center justify-center shrink-0">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex items-end gap-2">
+      <CoachAvatar />
+      <div className="card px-4 py-3 flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce" style={{ animationDelay: "0ms" }} />
+        <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce" style={{ animationDelay: "150ms" }} />
+        <span className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce" style={{ animationDelay: "300ms" }} />
+      </div>
+    </div>
+  );
+}
+
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    fetchCoachHistory()
+      .then((history) => {
+        setMessages(
+          history.map((m) => ({
+            role: m.role === "assistant" ? "coach" : "user",
+            text: m.message,
+          }))
+        );
+      })
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -36,6 +74,11 @@ export default function CoachPage() {
     setError("");
     setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
     setLoading(true);
+
+    // Auto-resize textarea back down
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
 
     try {
       const { reply } = await coachChat(trimmed);
@@ -54,21 +97,54 @@ export default function CoachPage() {
     }
   };
 
-  return (
-    <div className="flex flex-col h-[calc(100vh-6rem)]">
-      <Header title="AI Career Coach" />
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = "auto";
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+  };
 
-      {/* Chat history */}
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-4">
-        {messages.length === 0 && (
-          <div className="mt-6">
-            <p className="text-[#525252] text-sm mb-4">Ask anything about your job search:</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+  const isEmpty = messages.length === 0 && !historyLoading;
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-6rem)] max-w-3xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-2xl bg-ai-50 border border-ai-100 flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 className="text-lg font-bold text-ink tracking-tight">AI Career Coach</h1>
+          <p className="text-xs text-ink-muted">Powered by Claude · Your personal career advisor</p>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          <span className="text-xs text-ink-muted">Online</span>
+        </div>
+      </div>
+
+      {/* Chat area */}
+      <div className="flex-1 overflow-y-auto space-y-5 pr-1 pb-4">
+        {historyLoading && <LoadingSpinner />}
+
+        {isEmpty && (
+          <div className="flex flex-col items-center text-center pt-8 pb-4">
+            <div className="w-16 h-16 rounded-2xl bg-ai-50 border border-ai-100 flex items-center justify-center mb-4">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ai-400">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <h2 className="text-base font-semibold text-ink mb-1">Your career coach is ready</h2>
+            <p className="text-sm text-ink-muted mb-8 max-w-sm">
+              Ask anything about your job search — interview prep, resume tips, salary negotiation, or career strategy.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => send(s)}
-                  className="text-left text-sm text-[#a3a3a3] bg-[#111111] border border-[#1f1f1f] rounded-lg px-4 py-3 hover:border-blue-500 hover:text-white transition-colors"
+                  className="text-left text-sm text-ink-secondary bg-surface border border-border rounded-xl px-4 py-3 hover:border-ai-200 hover:bg-ai-50 hover:text-ai-700 transition-all"
                 >
                   {s}
                 </button>
@@ -78,19 +154,17 @@ export default function CoachPage() {
         )}
 
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
+          <div key={i} className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            {msg.role === "coach" && <CoachAvatar />}
             <div
-              className={`max-w-[75%] rounded-lg px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
+              className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
                 msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-[#111111] border border-[#1f1f1f] text-[#d4d4d4]"
+                  ? "bg-accent-600 text-white rounded-br-md"
+                  : "card text-ink rounded-bl-md"
               }`}
             >
               {msg.role === "coach" && (
-                <span className="block text-xs text-[#525252] mb-1 font-medium uppercase tracking-wider">
+                <span className="block text-[10px] font-semibold text-ai-500 uppercase tracking-widest mb-1.5">
                   Coach
                 </span>
               )}
@@ -99,42 +173,41 @@ export default function CoachPage() {
           </div>
         ))}
 
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-[#111111] border border-[#1f1f1f] rounded-lg px-4 py-3">
-              <LoadingSpinner />
-            </div>
-          </div>
-        )}
+        {loading && <TypingIndicator />}
 
         {error && (
-          <p className="text-center text-xs text-red-400">{error}</p>
+          <p className="text-center text-xs text-rose-500 bg-rose-50 rounded-lg py-2 px-4">{error}</p>
         )}
 
         <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
-      <div className="pt-4 border-t border-[#1f1f1f]">
-        <div className="flex gap-3 items-end">
+      {/* Composer */}
+      <div className="pt-4 border-t border-border">
+        <div className="card p-2 flex items-end gap-2">
           <textarea
+            ref={textareaRef}
             rows={1}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInput}
             onKeyDown={handleKeyDown}
-            placeholder="Ask your career coach... (Enter to send)"
-            className="flex-1 bg-[#111111] border border-[#1f1f1f] text-white text-sm rounded-lg px-4 py-3 resize-none focus:outline-none focus:border-blue-500 placeholder-[#525252]"
+            placeholder="Ask your career coach…"
+            className="flex-1 bg-transparent text-ink text-sm px-2 py-1.5 resize-none focus:outline-none placeholder:text-ink-muted min-h-[36px]"
+            style={{ height: "auto" }}
           />
           <button
             onClick={() => send(input)}
             disabled={loading || !input.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-3 rounded-lg transition-colors"
+            className="btn-primary shrink-0 py-2 px-4"
           >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9l20-7z"/>
+            </svg>
             Send
           </button>
         </div>
-        <p className="text-xs text-[#525252] mt-2">
-          Shift+Enter for new line. Powered by Claude.
+        <p className="text-[11px] text-ink-disabled mt-2 text-center">
+          Press Enter to send · Shift+Enter for new line
         </p>
       </div>
     </div>

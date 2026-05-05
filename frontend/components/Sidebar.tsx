@@ -5,50 +5,120 @@ import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 
 const links = [
-  { href: "/", label: "Dashboard" },
-  { href: "/jobs", label: "Jobs" },
-  { href: "/scan", label: "Scan" },
-  { href: "/coach", label: "Coach" },
+  {
+    href: "/",
+    label: "Dashboard",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+    ),
+  },
+  {
+    href: "/jobs",
+    label: "Jobs",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+      </svg>
+    ),
+  },
+  {
+    href: "/scan",
+    label: "Scan",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+    ),
+  },
+  {
+    href: "/coach",
+    label: "AI Coach",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+    ),
+  },
+  {
+    href: "/profile",
+    label: "Profile",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+      </svg>
+    ),
+  },
 ];
 
 export default function Sidebar() {
-  const pathname       = usePathname();
+  const pathname = usePathname();
   const { data: session } = useSession();
 
+  const initials = session?.user?.email
+    ? session.user.email.slice(0, 2).toUpperCase()
+    : "JN";
+
   return (
-    <aside className="fixed left-0 top-0 h-screen w-56 bg-[#111111] border-r border-[#1f1f1f] flex flex-col z-10">
-      <div className="px-6 py-5 border-b border-[#1f1f1f]">
-        <span className="text-white font-bold text-xl tracking-tight">JobNest</span>
+    <aside className="fixed left-0 top-0 h-screen w-60 bg-surface border-r border-border flex flex-col z-20 shadow-card">
+      {/* Logo */}
+      <div className="px-5 py-5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-accent-600 flex items-center justify-center shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+          </div>
+          <span className="font-bold text-lg tracking-tight text-ink">JobNest</span>
+        </div>
+        <p className="text-xs text-ink-muted mt-1 ml-10.5 pl-0.5">Career Copilot</p>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {links.map(({ href, label }) => {
+
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-2 space-y-0.5">
+        <p className="text-[10px] font-semibold text-ink-disabled uppercase tracking-widest px-3 mb-2">Navigation</p>
+        {links.map(({ href, label, icon }) => {
           const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 isActive
-                  ? "bg-blue-600 text-white"
-                  : "text-[#a3a3a3] hover:text-white hover:bg-[#1f1f1f]"
+                  ? "bg-accent-50 text-accent-700 shadow-sm"
+                  : "text-ink-secondary hover:text-ink hover:bg-elevated"
               }`}
             >
+              <span className={isActive ? "text-accent-600" : "text-ink-muted"}>{icon}</span>
               {label}
+              {isActive && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-500" />
+              )}
             </Link>
           );
         })}
       </nav>
-      <div className="px-4 py-4 border-t border-[#1f1f1f] space-y-2">
-        {session?.user?.email && (
-          <p className="text-[#525252] text-xs truncate px-1">{session.user.email}</p>
-        )}
+
+      {/* User footer */}
+      <div className="px-3 py-4 border-t border-border">
+        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-elevated transition-colors">
+          <div className="w-8 h-8 rounded-full bg-accent-100 flex items-center justify-center shrink-0">
+            <span className="text-xs font-semibold text-accent-700">{initials}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            {session?.user?.email && (
+              <p className="text-xs text-ink-secondary truncate">{session.user.email}</p>
+            )}
+          </div>
+        </div>
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="w-full text-left text-xs text-[#a3a3a3] hover:text-white px-3 py-1.5 rounded hover:bg-[#1f1f1f] transition-colors"
+          className="mt-1 w-full text-left text-xs text-ink-muted hover:text-ink px-3 py-2 rounded-lg hover:bg-elevated transition-colors"
         >
           Sign out
         </button>
-        <span className="text-[#525252] text-xs px-1">v3.0.0</span>
       </div>
     </aside>
   );

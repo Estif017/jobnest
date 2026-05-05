@@ -59,6 +59,73 @@ class CoachChatResponse(BaseModel):
     reply: str
 
 
+class ChatMessage(BaseModel):
+    """One entry from the chat_history table."""
+    role:      str   # 'user' or 'assistant'
+    message:   str
+    timestamp: str
+
+
+# ---------------------------------------------------------------------------
+# Auth request / response models
+# ---------------------------------------------------------------------------
+
+class RegisterRequest(BaseModel):
+    email:    str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email:    str
+    password: str
+
+
+class GoogleAuthRequest(BaseModel):
+    """Called by NextAuth after a successful Google sign-in to upsert the user."""
+    email: str
+
+
+class AuthResponse(BaseModel):
+    user_id:             int
+    email:               str
+    onboarding_complete: bool
+    provider:            str
+
+
+class OnboardingCompleteRequest(BaseModel):
+    user_id: int
+
+
+class ChangePasswordRequest(BaseModel):
+    user_id:      int
+    current:      str
+    new_password: str
+
+
+class OnboardingDataRequest(BaseModel):
+    target_role:        str = ""
+    target_industries:  List[str] = []
+    seniority_level:    str = ""
+    employment_types:   List[str] = []
+    work_model:         str = ""
+    current_location:   str = ""
+    open_to_relocation: bool = False
+    salary_min:         int = 0
+    salary_max:         int = 0
+    salary_currency:    str = "USD"
+    years_experience:   str = ""
+    top_skills_manual:  List[str] = []
+    certifications:     str = ""
+    linkedin_url:       str = ""
+    portfolio_url:      str = ""
+    github_username:    str = ""
+
+
+class OnboardingDataResponse(OnboardingDataRequest):
+    name:   str = ""
+    skills: List[str] = []
+
+
 # ---------------------------------------------------------------------------
 # Response models
 # ---------------------------------------------------------------------------

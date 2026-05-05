@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 python-dotenv
 pydantic
+python-multipart
+tavily-python
