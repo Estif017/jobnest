@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { fetchJob, fetchAnalysis, analyzeJob, updateJob, deleteJob, fetchCompanyNews, agentAnalyzeJob, agentProduceJob, Job, JobAnalysis, CompanyNews, AgentAnalysis, AgentProduceResult, AgentToolCall } from "@/lib/api";
+import {
+  fetchJob, fetchAnalysis, analyzeJob, updateJob, deleteJob,
+  fetchCompanyNews, agentAnalyzeJob, agentProduceJob,
+  fetchInterviewPrep, generateInterviewPrep,
+  Job, JobAnalysis, CompanyNews, AgentAnalysis, AgentProduceResult, AgentToolCall, InterviewPrep,
+} from "@/lib/api";
 import Header from "@/components/Header";
 import FitScore from "@/components/FitScore";
 import StatusBadge from "@/components/StatusBadge";
@@ -15,18 +20,24 @@ export default function JobDetailPage() {
   const router = useRouter();
   const jobId = Number(id);
 
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob]           = useState<Job | null>(null);
   const [analysis, setAnalysis] = useState<JobAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [news, setNews] = useState<CompanyNews | null>(null);
+  const [loading, setLoading]   = useState(true);
+
+  const [news, setNews]               = useState<CompanyNews | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
+
   const [agentResult, setAgentResult] = useState<AgentAnalysis | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
-  const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentError, setAgentError]   = useState<string | null>(null);
+
   const [produceResult, setProduceResult] = useState<AgentProduceResult | null>(null);
   const [produceLoading, setProduceLoading] = useState(false);
-  const [produceError, setProduceError] = useState<string | null>(null);
+  const [produceError, setProduceError]   = useState<string | null>(null);
+
+  const [prep, setPrep]               = useState<InterviewPrep | null>(null);
+  const [prepLoading, setPrepLoading] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -35,12 +46,15 @@ export default function JobDetailPage() {
     ]).then(([j, a]) => {
       setJob(j);
       setAnalysis(a);
-      // Auto-fetch company news after job loads — no user action needed
       setNewsLoading(true);
       fetchCompanyNews(jobId)
         .then(setNews)
         .catch(() => setNews(null))
         .finally(() => setNewsLoading(false));
+      // Load existing prep if job is already Interviewing
+      if (j.status === "Interviewing") {
+        fetchInterviewPrep(jobId).then(setPrep).catch(() => {});
+      }
     }).finally(() => setLoading(false));
   }, [jobId]);
 
@@ -58,6 +72,14 @@ export default function JobDetailPage() {
     if (!job) return;
     const updated = await updateJob(jobId, { status: newStatus });
     setJob(updated);
+    // Auto-generate prep the moment status flips to Interviewing
+    if (newStatus === "Interviewing" && !prep && !prepLoading) {
+      setPrepLoading(true);
+      generateInterviewPrep(jobId)
+        .then(setPrep)
+        .catch(() => {})
+        .finally(() => setPrepLoading(false));
+    }
   };
 
   const handleDelete = async () => {
@@ -94,6 +116,8 @@ export default function JobDetailPage() {
 
   if (loading) return <LoadingSpinner />;
   if (!job) return <p className="text-ink-muted">Job not found.</p>;
+
+  const isInterviewing = job.status === "Interviewing";
 
   return (
     <div className="max-w-3xl">
@@ -160,13 +184,105 @@ export default function JobDetailPage() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Company News — agentic web search panel                             */}
-      {/* The backend automatically searched the web when you opened this     */}
-      {/* page — no button click required.                                    */}
+      {/* Interview Prep Pack — auto-triggers when status → Interviewing      */}
       {/* ------------------------------------------------------------------ */}
+      {(isInterviewing || prepLoading) && (
+        <div className="card p-6 mb-4 border-l-4 border-l-amber-400">
+          <div className="flex items-center gap-2.5 mb-5">
+            <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-ink">Interview Prep Pack</p>
+              <p className="text-[11px] text-ink-muted">
+                {prepLoading ? "Generating…" : "Auto-generated when you moved to Interviewing"}
+              </p>
+            </div>
+          </div>
+
+          {prepLoading && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-4 h-4 border-2 border-border border-t-amber-500 rounded-full animate-spin shrink-0" />
+                <p className="text-xs text-ink-muted">
+                  Claude is reading your resume and generating a prep pack for {job.company}…
+                </p>
+              </div>
+              {/* Skeleton rows */}
+              {[1,2,3].map(i => (
+                <div key={i} className="space-y-1.5">
+                  <div className="h-3 bg-elevated rounded animate-pulse w-2/3" />
+                  <div className="h-3 bg-elevated rounded animate-pulse w-full" />
+                  <div className="h-3 bg-elevated rounded animate-pulse w-4/5" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {prep && !prepLoading && (
+            <div className="space-y-6">
+
+              {/* Interview questions */}
+              <div>
+                <p className="label mb-3">Likely Interview Questions</p>
+                <div className="space-y-4">
+                  {prep.questions.map((q, i) => (
+                    <div key={i} className="rounded-xl border border-border overflow-hidden">
+                      <div className="bg-elevated px-4 py-2.5 flex items-start gap-2.5">
+                        <span className="text-xs font-bold text-amber-600 mt-0.5 shrink-0">Q{i + 1}</span>
+                        <p className="text-sm font-medium text-ink">{q.question}</p>
+                      </div>
+                      <div className="px-4 py-3 bg-surface">
+                        <p className="text-xs text-ink-muted font-semibold uppercase tracking-wide mb-1.5">Suggested answer</p>
+                        <p className="text-sm text-ink-secondary leading-relaxed">{q.answer}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Research topics */}
+              {prep.research.length > 0 && (
+                <div>
+                  <p className="label mb-2">Research Before the Interview</p>
+                  <ul className="space-y-2">
+                    {prep.research.map((item, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-sm text-ink-secondary">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 shrink-0 mt-0.5">
+                          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Smart question */}
+              {prep.smart_question && (
+                <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3.5">
+                  <p className="text-xs font-semibold text-amber-700 mb-1">Smart question to ask the interviewer</p>
+                  <p className="text-sm text-amber-900">&ldquo;{prep.smart_question}&rdquo;</p>
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {!prep && !prepLoading && (
+            <p className="text-xs text-ink-muted">
+              Prep pack will appear here once generated.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Company Intelligence panel */}
       <div className="card p-5 mb-4">
         <div className="flex items-center gap-2.5 mb-3">
-          {/* Globe icon — represents "eyes on the web" */}
           <div className="w-7 h-7 rounded-lg bg-ai-50 flex items-center justify-center shrink-0">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
               <circle cx="12" cy="12" r="10"/>
@@ -199,16 +315,11 @@ export default function JobDetailPage() {
         )}
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Agent Analyze — "Let the Agent Decide" panel                      */}
-      {/* Claude receives the job info + a search_web tool and decides on   */}
-      {/* its own whether and what to search. We log every tool call made.  */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Agent Analysis panel */}
       <div className="card p-5 mb-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-ai-50 flex items-center justify-center shrink-0">
-              {/* Sparkle / agent icon */}
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
                 <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/>
               </svg>
@@ -226,11 +337,9 @@ export default function JobDetailPage() {
         </div>
 
         {agentLoading && (
-          <div className="space-y-2 py-2">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
-              <p className="text-xs text-ink-muted">Claude is reasoning and searching the web…</p>
-            </div>
+          <div className="flex items-center gap-2 py-2">
+            <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
+            <p className="text-xs text-ink-muted">Claude is reasoning and searching the web…</p>
           </div>
         )}
 
@@ -240,7 +349,6 @@ export default function JobDetailPage() {
 
         {agentResult && !agentLoading && (
           <div className="space-y-4">
-            {/* Tool calls Claude made — shows the agentic reasoning */}
             {agentResult.tool_calls.length > 0 && (
               <div>
                 <p className="label mb-1.5">Searches Claude ran</p>
@@ -257,8 +365,6 @@ export default function JobDetailPage() {
                 </div>
               </div>
             )}
-
-            {/* Final analysis from Claude */}
             <div>
               <p className="label mb-1.5">Analysis</p>
               <p className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed">{agentResult.analysis}</p>
@@ -273,11 +379,7 @@ export default function JobDetailPage() {
         )}
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Agent Write — "The Agent Acts"                                     */}
-      {/* Claude calls get_candidate_profile + search_web on its own, then  */}
-      {/* produces a tailored resume summary and 3-paragraph cover letter.  */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Agent Write panel */}
       <div className="card p-5 mb-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
@@ -311,7 +413,6 @@ export default function JobDetailPage() {
 
         {produceResult && !produceLoading && (
           <div className="space-y-5">
-            {/* Tool call trail */}
             {produceResult.tool_calls.length > 0 && (
               <div>
                 <p className="label mb-1.5">What Claude did</p>
@@ -340,8 +441,6 @@ export default function JobDetailPage() {
                 </div>
               </div>
             )}
-
-            {/* Resume summary */}
             {produceResult.resume_summary && (
               <div>
                 <p className="label mb-1.5">Tailored Resume Summary</p>
@@ -350,8 +449,6 @@ export default function JobDetailPage() {
                 </p>
               </div>
             )}
-
-            {/* Cover letter */}
             {produceResult.cover_letter && (
               <div>
                 <p className="label mb-1.5">Cover Letter</p>
@@ -392,7 +489,6 @@ export default function JobDetailPage() {
           <LoadingSpinner />
         ) : analysis ? (
           <div className="space-y-5 text-sm">
-            {/* Score row */}
             <div className="flex items-center gap-6 p-4 rounded-xl bg-base">
               <div>
                 <p className="label">Fit Score</p>
@@ -401,7 +497,7 @@ export default function JobDetailPage() {
               <div>
                 <p className="label">Verdict</p>
                 <span className={`font-semibold text-sm ${
-                  analysis.verdict === "APPLY"    ? "text-emerald-600"
+                  analysis.verdict === "APPLY"     ? "text-emerald-600"
                   : analysis.verdict === "RED FLAG" ? "text-rose-600"
                   : "text-amber-600"
                 }`}>{analysis.verdict}</span>

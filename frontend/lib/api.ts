@@ -226,6 +226,28 @@ export interface AgentAnalysis {
 export const agentAnalyzeJob = (jobId: number): Promise<AgentAnalysis> =>
   apiFetch(`/jobs/${jobId}/agent-analyze`, { method: "POST" });
 
+// ---------------------------------------------------------------------------
+// Interview Prep
+// ---------------------------------------------------------------------------
+
+export interface InterviewQuestion {
+  question: string;
+  answer: string;
+}
+
+export interface InterviewPrep {
+  job_id: number;
+  questions: InterviewQuestion[];
+  research: string[];
+  smart_question: string;
+}
+
+export const fetchInterviewPrep = (jobId: number): Promise<InterviewPrep> =>
+  apiFetch(`/jobs/${jobId}/interview-prep`);
+
+export const generateInterviewPrep = (jobId: number): Promise<InterviewPrep> =>
+  apiFetch(`/jobs/${jobId}/interview-prep`, { method: "POST" });
+
 export interface AgentToolCall {
   tool: "search_web" | "get_candidate_profile";
   query: string | null;

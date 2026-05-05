@@ -51,6 +51,8 @@ from db_operations import (
     get_unread_count,
     mark_notification_read,
     mark_all_notifications_read,
+    save_interview_prep,
+    load_interview_prep,
     VALID_STATUSES,
 )
 from api.scheduler import start_scheduler, hunt_new_jobs
@@ -158,6 +160,104 @@ def scheduler_run_now():
     """
     hunt_new_jobs()
     return {"message": "Hunt complete. Check server logs for results."}
+
+
+# ---------------------------------------------------------------------------
+# Interview Prep Pack — auto-generated when status changes to Interviewing
+#
+# Claude receives the job + the candidate's full profile and produces:
+#   - 5 role-specific interview questions + a tailored answer for each
+#   - 3 research topics to cover before the interview
+#   - 1 smart question to ask the interviewer
+#
+# Results are saved so the page loads instantly on repeat visits.
+# ---------------------------------------------------------------------------
+
+@app.get("/jobs/{job_id}/interview-prep")
+def jobs_get_interview_prep(job_id: int, user_id: int = Depends(get_user_id)):
+    """Returns the stored interview prep for a job. 404 if not generated yet."""
+    prep = load_interview_prep(job_id, user_id)
+    if prep is None:
+        raise HTTPException(status_code=404, detail="No interview prep found for this job.")
+    return prep
+
+
+@app.post("/jobs/{job_id}/interview-prep")
+def jobs_generate_interview_prep(job_id: int, user_id: int = Depends(get_user_id)):
+    """
+    Generates an interview prep pack using Claude.
+    Saves the result so subsequent GETs return instantly.
+    """
+    import anthropic
+    import json
+    import re
+
+    job = get_job_by_id(job_id, user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+    profile = build_user_profile(user_id)
+
+    candidate_context = ""
+    if profile:
+        exp_lines = "\n".join(
+            f"  - {e.title} at {e.company} ({e.years})"
+            for e in profile.resume.experience
+        )
+        candidate_context = (
+            f"\nCandidate: {profile.resume.name}\n"
+            f"Skills: {', '.join(profile.all_skills[:12])}\n"
+            f"Experience:\n{exp_lines or '  (none listed)'}"
+        )
+
+    prompt = (
+        f"You are an expert interview coach. Generate an interview prep pack for this candidate.\n"
+        f"{candidate_context}\n\n"
+        f"Role: {job.title}\n"
+        f"Company: {job.company}\n"
+        f"Location: {job.location or 'Not specified'}\n"
+        f"Job notes: {job.notes or 'None'}\n\n"
+        f"Return ONLY a JSON object with this exact shape:\n"
+        f'{{\n'
+        f'  "questions": [\n'
+        f'    {{"question": "...", "answer": "2-3 sentences using the candidate\'s background"}},\n'
+        f'    ... (5 total)\n'
+        f'  ],\n'
+        f'  "research": ["topic 1", "topic 2", "topic 3"],\n'
+        f'  "smart_question": "One insightful question to ask the interviewer"\n'
+        f'}}\n\n'
+        f"Make every answer specific to the candidate\'s actual experience. "
+        f"Make every question realistic for this exact role and company."
+    )
+
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        parsed = json.loads(match.group()) if match else {}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Claude failed: {e}")
+
+    questions      = parsed.get("questions", [])
+    research       = parsed.get("research", [])
+    smart_question = parsed.get("smart_question", "")
+
+    if not questions:
+        raise HTTPException(status_code=502, detail="Claude returned an empty prep pack.")
+
+    save_interview_prep(job_id, user_id, questions, research, smart_question)
+
+    return {
+        "job_id":         job_id,
+        "questions":      questions,
+        "research":       research,
+        "smart_question": smart_question,
+    }
 
 
 # ---------------------------------------------------------------------------

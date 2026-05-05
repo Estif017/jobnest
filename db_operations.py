@@ -637,6 +637,51 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Interview prep persistence
+# ---------------------------------------------------------------------------
+
+def save_interview_prep(job_id: int, user_id: int, questions: list, research: list, smart_question: str) -> int:
+    """Saves a generated interview prep pack. Returns the new row id, or -1 on failure."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    created_at = datetime.now().isoformat()
+    try:
+        cursor.execute(
+            "INSERT INTO interview_preps (job_id, user_id, questions, research, smart_question, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (job_id, user_id, json.dumps(questions), json.dumps(research), smart_question, created_at),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.Error:
+        return -1
+    finally:
+        conn.close()
+
+
+def load_interview_prep(job_id: int, user_id: int) -> Optional[dict]:
+    """Loads the most recent interview prep for a job. Returns None if not generated yet."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM interview_preps WHERE job_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1",
+        (job_id, user_id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "id":             row["id"],
+        "job_id":         row["job_id"],
+        "questions":      json.loads(row["questions"]),
+        "research":       json.loads(row["research"]),
+        "smart_question": row["smart_question"],
+        "created_at":     row["created_at"],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Notifications
 # ---------------------------------------------------------------------------
 

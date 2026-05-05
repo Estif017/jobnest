@@ -98,6 +98,18 @@ def init_db() -> None:
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS interview_preps (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id         INTEGER NOT NULL,
+            user_id        INTEGER REFERENCES users(id),
+            questions      TEXT NOT NULL DEFAULT '[]',
+            research       TEXT NOT NULL DEFAULT '[]',
+            smart_question TEXT NOT NULL DEFAULT '',
+            created_at     TEXT NOT NULL
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS notifications (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id    INTEGER REFERENCES users(id),
