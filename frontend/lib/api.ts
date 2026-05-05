@@ -265,6 +265,39 @@ export const agentProduceJob = (jobId: number): Promise<AgentProduceResult> =>
   apiFetch(`/jobs/${jobId}/agent-produce`, { method: "POST" });
 
 // ---------------------------------------------------------------------------
+// Full Hunt — The Orchestrator
+// ---------------------------------------------------------------------------
+
+export interface FullHuntToolCall {
+  tool:  "analyze_job" | "write_application" | "get_coach_advice";
+  input: Record<string, unknown>;
+  error?: string;
+}
+
+export interface FullHuntAnalysis {
+  fit_score:      number;
+  verdict:        string;
+  confidence:     number;
+  fit_reasons:    string[];
+  skills_matched: string[];
+  skill_gaps:     string[];
+}
+
+export interface FullHuntResult {
+  verdict:              string | null;
+  fit_score:            number | null;
+  analysis:             FullHuntAnalysis | null;
+  resume_summary:       string | null;
+  cover_letter:         string | null;
+  coach_advice:         string | null;
+  orchestrator_summary: string | null;
+  tool_calls_log:       FullHuntToolCall[];
+}
+
+export const fullHuntJob = (jobId: number): Promise<FullHuntResult> =>
+  apiFetch(`/jobs/${jobId}/full-hunt`, { method: "POST" });
+
+// ---------------------------------------------------------------------------
 // Scrape
 // ---------------------------------------------------------------------------
 

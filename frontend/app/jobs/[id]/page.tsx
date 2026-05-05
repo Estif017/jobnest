@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   fetchJob, fetchAnalysis, analyzeJob, updateJob, deleteJob,
-  fetchCompanyNews, agentAnalyzeJob, agentProduceJob,
+  fetchCompanyNews, agentAnalyzeJob, agentProduceJob, fullHuntJob,
   fetchInterviewPrep, generateInterviewPrep,
   Job, JobAnalysis, CompanyNews, AgentAnalysis, AgentProduceResult, AgentToolCall, InterviewPrep,
+  FullHuntResult,
 } from "@/lib/api";
 import Header from "@/components/Header";
 import FitScore from "@/components/FitScore";
@@ -38,6 +39,10 @@ export default function JobDetailPage() {
 
   const [prep, setPrep]               = useState<InterviewPrep | null>(null);
   const [prepLoading, setPrepLoading] = useState(false);
+
+  const [huntResult, setHuntResult]   = useState<FullHuntResult | null>(null);
+  const [huntLoading, setHuntLoading] = useState(false);
+  const [huntError, setHuntError]     = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -111,6 +116,19 @@ export default function JobDetailPage() {
       setProduceError(e instanceof Error ? e.message : "Agent write failed.");
     } finally {
       setProduceLoading(false);
+    }
+  };
+
+  const handleFullHunt = async () => {
+    setHuntLoading(true);
+    setHuntError(null);
+    try {
+      const result = await fullHuntJob(jobId);
+      setHuntResult(result);
+    } catch (e) {
+      setHuntError(e instanceof Error ? e.message : "Full Hunt failed.");
+    } finally {
+      setHuntLoading(false);
     }
   };
 
@@ -190,6 +208,151 @@ export default function JobDetailPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Full Hunt — The Orchestrator                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="card p-5 mb-4 border border-accent-200">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-accent-50 flex items-center justify-center shrink-0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent-600">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-ink">Full Hunt</p>
+              <p className="text-[11px] text-ink-muted">One prompt · Claude orchestrates the entire pipeline</p>
+            </div>
+          </div>
+          {!huntLoading && (
+            <button
+              onClick={handleFullHunt}
+              className="text-xs px-3 py-1.5 rounded-xl bg-accent-600 text-white hover:bg-accent-700 font-medium transition-colors"
+            >
+              {huntResult ? "Re-run Hunt" : "Help Me Land This Job"}
+            </button>
+          )}
+        </div>
+
+        {huntLoading && (
+          <div className="space-y-2 py-2">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-border border-t-accent-600 rounded-full animate-spin shrink-0" />
+              <p className="text-xs text-ink-muted">Orchestrator running — Claude is deciding what to do…</p>
+            </div>
+            <div className="flex gap-1.5 ml-6">
+              {["Analyzing fit", "Researching company", "Writing application"].map((step, i) => (
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-elevated border border-border text-ink-muted animate-pulse" style={{ animationDelay: `${i * 400}ms` }}>
+                  {step}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {huntError && !huntLoading && (
+          <p className="text-xs text-rose-600 py-1">{huntError}</p>
+        )}
+
+        {huntResult && !huntLoading && (
+          <div className="space-y-5">
+            {/* Verdict + score bar */}
+            <div className={`rounded-xl px-4 py-3 flex items-center gap-4 ${
+              huntResult.verdict === "RED FLAG" ? "bg-rose-50 border border-rose-100"
+              : huntResult.verdict === "APPLY"  ? "bg-emerald-50 border border-emerald-100"
+              : "bg-amber-50 border border-amber-100"
+            }`}>
+              <span className={`text-sm font-bold ${
+                huntResult.verdict === "RED FLAG" ? "text-rose-700"
+                : huntResult.verdict === "APPLY"  ? "text-emerald-700"
+                : "text-amber-700"
+              }`}>{huntResult.verdict}</span>
+              {huntResult.fit_score != null && (
+                <span className="text-sm font-semibold text-ink">{huntResult.fit_score}<span className="text-ink-muted font-normal">/10</span></span>
+              )}
+              {/* Tool call trace */}
+              {huntResult.tool_calls_log.length > 0 && (
+                <div className="ml-auto flex items-center gap-1.5">
+                  {huntResult.tool_calls_log.map((tc, i) => (
+                    <span key={i} className="text-[10px] font-mono bg-white border border-border px-2 py-0.5 rounded-md text-ink-muted">
+                      {tc.tool === "analyze_job" ? "analyze" : tc.tool === "write_application" ? "write" : "coach"}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Orchestrator summary */}
+            {huntResult.orchestrator_summary && (
+              <div>
+                <p className="label mb-1.5">Orchestrator Summary</p>
+                <p className="text-sm text-ink-secondary leading-relaxed whitespace-pre-wrap">{huntResult.orchestrator_summary}</p>
+              </div>
+            )}
+
+            {/* Analysis details */}
+            {huntResult.analysis && (
+              <div className="grid grid-cols-2 gap-3">
+                {huntResult.analysis.skills_matched.length > 0 && (
+                  <div>
+                    <p className="label mb-1.5">Skills Matched</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {huntResult.analysis.skills_matched.map((s, i) => (
+                        <span key={i} className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {huntResult.analysis.skill_gaps.length > 0 && (
+                  <div>
+                    <p className="label mb-1.5">Skill Gaps</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {huntResult.analysis.skill_gaps.map((s, i) => (
+                        <span key={i} className="text-xs px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Resume summary */}
+            {huntResult.resume_summary && (
+              <div>
+                <p className="label mb-1.5">Tailored Resume Summary</p>
+                <p className="text-sm text-ink-secondary leading-relaxed bg-base border border-border rounded-xl px-4 py-3">
+                  {huntResult.resume_summary}
+                </p>
+              </div>
+            )}
+
+            {/* Cover letter */}
+            {huntResult.cover_letter && (
+              <div>
+                <p className="label mb-1.5">Cover Letter</p>
+                <pre className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed bg-base border border-border rounded-xl px-4 py-4 font-sans">
+                  {huntResult.cover_letter}
+                </pre>
+              </div>
+            )}
+
+            {/* Coach advice */}
+            {huntResult.coach_advice && (
+              <div className="bg-ai-50 border border-ai-100 rounded-xl px-4 py-3.5">
+                <p className="text-xs font-semibold text-ai-600 mb-1.5">Coach Advice</p>
+                <p className="text-sm text-ink-secondary leading-relaxed">{huntResult.coach_advice}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!huntResult && !huntLoading && !huntError && (
+          <p className="text-xs text-ink-muted py-1">
+            Click &ldquo;Help Me Land This Job&rdquo; — Claude will analyze fit, write your application, and coach you on gaps. All in one shot.
+          </p>
+        )}
       </div>
 
       {/* ------------------------------------------------------------------ */}

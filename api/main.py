@@ -855,6 +855,341 @@ def jobs_agent_produce(job_id: int, user_id: int = Depends(get_user_id)):
 
 
 # ---------------------------------------------------------------------------
+# Shared helper — agent-produce inner loop
+# Called by /agent-produce AND /full-hunt so the logic lives once.
+# ---------------------------------------------------------------------------
+
+def _run_agent_produce(job: Job, user_id: int) -> dict:
+    """
+    Runs the two-tool agentic writing loop (search_web + get_candidate_profile).
+    Returns {"resume_summary": str, "cover_letter": str, "tool_calls": list}.
+    Raises RuntimeError on setup failure so callers can decide how to surface it.
+    """
+    import json as _json
+    import re as _re
+    from tavily import TavilyClient as _Tavily
+
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    if not tavily_key:
+        raise RuntimeError("TAVILY_API_KEY not set.")
+
+    claude  = anthropic.Anthropic()
+    tavily  = _Tavily(api_key=tavily_key)
+
+    tools = [
+        {
+            "name": "search_web",
+            "description": (
+                "Search the web for current information about a company or job. "
+                "Use this to find recent news, culture, values, tech stack, or "
+                "anything that would help tailor a cover letter."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "get_candidate_profile",
+            "description": (
+                "Returns the candidate's full resume: name, skills, work experience, "
+                "education, and raw text. Call this before writing."
+            ),
+            "input_schema": {"type": "object", "properties": {}},
+        },
+    ]
+
+    initial_message = (
+        f"You are a senior career coach and professional writer. Produce two deliverables:\n"
+        f"1. A tailored 2-3 sentence professional resume summary.\n"
+        f"2. A compelling 3-paragraph cover letter.\n\n"
+        f"Role: {job.title} at {job.company} ({job.location or 'location n/a'})\n"
+        f"Notes: {job.notes or 'None provided'}\n\n"
+        f"Steps: call get_candidate_profile, then search_web to research {job.company}, "
+        f"then write both deliverables.\n\n"
+        f"Return JSON with keys: resume_summary, cover_letter"
+    )
+
+    messages       = [{"role": "user", "content": initial_message}]
+    tool_calls_log = []
+
+    while True:
+        response = claude.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            tools=tools,
+            messages=messages,
+        )
+
+        if response.stop_reason == "end_turn":
+            final_text = next(
+                (b.text for b in response.content if hasattr(b, "text")), "{}"
+            )
+            break
+
+        if response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": response.content})
+            tool_results = []
+
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+
+                if block.name == "search_web":
+                    query = block.input["query"]
+                    try:
+                        sr  = tavily.search(query=query, search_depth="basic", max_results=4)
+                        raw = sr.get("results", [])
+                        snippets = "\n\n".join(
+                            f"[{r.get('title','')}]: {r.get('content','')}" for r in raw
+                        )
+                        results_count = len(raw)
+                    except Exception as e:
+                        snippets      = f"Search failed: {e}"
+                        results_count = 0
+                    tool_calls_log.append({"tool": "search_web", "query": query, "results_count": results_count})
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": snippets or "No results."})
+
+                elif block.name == "get_candidate_profile":
+                    profile = build_user_profile(user_id)
+                    if profile:
+                        content = _json.dumps({
+                            "name":       profile.resume.name,
+                            "skills":     profile.all_skills,
+                            "experience": [{"title": e.title, "company": e.company, "years": e.years} for e in profile.resume.experience],
+                            "education":  [{"degree": ed.degree, "institution": ed.institution, "year": ed.year} for ed in profile.resume.education],
+                            "raw_resume": profile.resume.raw_text[:4000],
+                        })
+                    else:
+                        content = "No resume found."
+                    tool_calls_log.append({"tool": "get_candidate_profile", "query": None, "results_count": None})
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": content})
+
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        final_text = "{}"
+        break
+
+    try:
+        m      = _re.search(r'\{.*\}', final_text, _re.DOTALL)
+        parsed = _json.loads(m.group()) if m else {}
+    except Exception:
+        parsed = {}
+
+    return {
+        "resume_summary": parsed.get("resume_summary", ""),
+        "cover_letter":   parsed.get("cover_letter", final_text),
+        "tool_calls":     tool_calls_log,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Full Hunt — "The Orchestrator"
+#
+# One master Claude agent that receives "help me land this job" and decides:
+#   1. Call analyze_job  — always first
+#   2. If RED FLAG       — stop, explain, return
+#   3. If APPLY          — call write_application, optionally get_coach_advice
+#   4. If SKIP           — optionally call get_coach_advice for gap advice
+#
+# Claude enforces the RED FLAG stop. There is no Python if-statement for it.
+# ---------------------------------------------------------------------------
+
+@app.post("/jobs/{job_id}/full-hunt")
+def jobs_full_hunt(job_id: int, user_id: int = Depends(get_user_id)):
+    """
+    Orchestrator: one endpoint, one goal — help the user land this job.
+    Claude decides which specialist tools to call and in what order.
+    """
+    import json
+
+    job = get_job_by_id(job_id, user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+    profile = build_user_profile(user_id)
+
+    # ---------- Tool implementations (called by Claude's tool_use blocks) ----------
+
+    def _tool_analyze_job() -> dict:
+        result = analyze_job(job, profile)
+        return {
+            "fit_score":      result.fit_score,
+            "verdict":        result.verdict,
+            "confidence":     result.confidence,
+            "fit_reasons":    result.fit_reasons,
+            "skills_matched": result.skills_matched,
+            "skill_gaps":     result.skill_gaps,
+        }
+
+    def _tool_write_application() -> dict:
+        try:
+            return _run_agent_produce(job, user_id)
+        except Exception as e:
+            return {"error": str(e), "resume_summary": "", "cover_letter": "", "tool_calls": []}
+
+    def _tool_get_coach_advice(question: str) -> dict:
+        ctx = ""
+        if profile:
+            exp = ", ".join(f"{e.title} at {e.company}" for e in profile.resume.experience[:3])
+            ctx = (
+                f"Candidate: {profile.resume.name}\n"
+                f"Skills: {', '.join(profile.all_skills[:10])}\n"
+                f"Experience: {exp}\n\n"
+            )
+        resp = anthropic.Anthropic().messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system="You are an expert career coach. Give specific, actionable advice in 2-3 paragraphs.",
+            messages=[{"role": "user", "content": f"{ctx}Job: {job.title} at {job.company}\n\nQuestion: {question}"}],
+        )
+        return {"advice": resp.content[0].text.strip()}
+
+    # ---------- Orchestrator tools ----------
+
+    tools = [
+        {
+            "name": "analyze_job",
+            "description": (
+                "Analyze how well the candidate fits this job posting. "
+                "Returns fit_score (1-10), verdict (APPLY / SKIP / RED FLAG), "
+                "matched skills, skill gaps, and confidence. ALWAYS call this first."
+            ),
+            "input_schema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "write_application",
+            "description": (
+                "Research the company on the web and write a tailored resume summary "
+                "and 3-paragraph cover letter for the candidate. "
+                "Call ONLY if verdict is APPLY."
+            ),
+            "input_schema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "get_coach_advice",
+            "description": (
+                "Get targeted career coaching advice for a specific gap or question. "
+                "Use when the candidate has skill gaps or needs guidance on whether "
+                "and how to pursue the role."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type":        "string",
+                        "description": "The specific coaching question to answer.",
+                    }
+                },
+                "required": ["question"],
+            },
+        },
+    ]
+
+    system_prompt = (
+        "You are a job application strategy orchestrator. Your goal: help the candidate "
+        "decide whether and how to pursue this specific job, then produce everything they need.\n\n"
+        "Pipeline rules — follow exactly, no exceptions:\n"
+        "1. Always call analyze_job first. Never skip it.\n"
+        "2. If analyze_job returns verdict RED FLAG: STOP immediately. "
+        "Do NOT call write_application or get_coach_advice under any circumstances. "
+        "Explain the red flags clearly and advise the candidate to skip this job.\n"
+        "3. If verdict is SKIP: Do NOT call write_application. You may call "
+        "get_coach_advice once to explain what the candidate would need to close the gap.\n"
+        "4. If verdict is APPLY: Call write_application. "
+        "If skill_gaps is non-empty, also call get_coach_advice with a targeted question "
+        "about the most critical gap.\n"
+        "5. End with a concise summary for the candidate covering your recommendation "
+        "and everything produced."
+    )
+
+    initial_message = (
+        f"Help me land this job: {job.title} at {job.company}"
+        + (f" ({job.location})" if job.location else "")
+        + f".\nDescription: {job.notes or 'No description provided.'}\n\n"
+        f"Run your full pipeline and give me everything I need."
+    )
+
+    messages       = [{"role": "user", "content": initial_message}]
+    tool_calls_log = []
+    result: dict   = {
+        "verdict":               None,
+        "fit_score":             None,
+        "analysis":              None,
+        "resume_summary":        None,
+        "cover_letter":          None,
+        "coach_advice":          None,
+        "orchestrator_summary":  None,
+        "tool_calls_log":        [],
+    }
+
+    claude = anthropic.Anthropic()
+
+    while True:
+        response = claude.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4000,
+            system=system_prompt,
+            tools=tools,
+            messages=messages,
+        )
+
+        messages.append({"role": "assistant", "content": response.content})
+
+        if response.stop_reason == "end_turn":
+            result["orchestrator_summary"] = next(
+                (b.text for b in response.content if hasattr(b, "text")), ""
+            )
+            break
+
+        if response.stop_reason != "tool_use":
+            break
+
+        tool_results = []
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+
+            tool_calls_log.append({"tool": block.name, "input": block.input})
+
+            try:
+                if block.name == "analyze_job":
+                    output = _tool_analyze_job()
+                    result["verdict"]   = output["verdict"]
+                    result["fit_score"] = output["fit_score"]
+                    result["analysis"]  = output
+
+                elif block.name == "write_application":
+                    output = _tool_write_application()
+                    result["resume_summary"] = output.get("resume_summary")
+                    result["cover_letter"]   = output.get("cover_letter")
+
+                elif block.name == "get_coach_advice":
+                    output = _tool_get_coach_advice(block.input.get("question", ""))
+                    result["coach_advice"] = output.get("advice")
+
+                else:
+                    output = {"error": f"Unknown tool: {block.name}"}
+
+            except Exception as e:
+                output = {"error": str(e)}
+                tool_calls_log[-1]["error"] = str(e)
+
+            tool_results.append({
+                "type":        "tool_result",
+                "tool_use_id": block.id,
+                "content":     json.dumps(output),
+            })
+
+        messages.append({"role": "user", "content": tool_results})
+
+    result["tool_calls_log"] = tool_calls_log
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Resume parsing
 # ---------------------------------------------------------------------------
 
