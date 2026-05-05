@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import LoadingSpinner from "@/components/LoadingSpinner";
+import ReactMarkdown from "react-markdown";
 import { coachChat, fetchCoachHistory } from "@/lib/api";
 
 interface Message {
@@ -126,7 +126,11 @@ export default function CoachPage() {
 
       {/* Chat area */}
       <div className="flex-1 overflow-y-auto space-y-5 pr-1 pb-4">
-        {historyLoading && <LoadingSpinner />}
+        {historyLoading && (
+          <div className="flex items-center justify-center h-32">
+            <div className="w-5 h-5 border-2 border-border border-t-ai-500 rounded-full animate-spin" />
+          </div>
+        )}
 
         {isEmpty && (
           <div className="flex flex-col items-center text-center pt-8 pb-4">
@@ -157,7 +161,7 @@ export default function CoachPage() {
           <div key={i} className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             {msg.role === "coach" && <CoachAvatar />}
             <div
-              className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
+              className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                 msg.role === "user"
                   ? "bg-accent-600 text-white rounded-br-md"
                   : "card text-ink rounded-bl-md"
@@ -168,7 +172,26 @@ export default function CoachPage() {
                   Coach
                 </span>
               )}
-              {msg.text}
+              {msg.role === "user" ? (
+                msg.text
+              ) : (
+                <ReactMarkdown
+                  components={{
+                    p:      ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                    strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
+                    em:     ({ children }) => <em className="italic">{children}</em>,
+                    ul:     ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
+                    ol:     ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
+                    li:     ({ children }) => <li className="text-sm">{children}</li>,
+                    h2:     ({ children }) => <h2 className="font-semibold text-ink text-sm mb-1 mt-2">{children}</h2>,
+                    h3:     ({ children }) => <h3 className="font-semibold text-ink text-sm mb-1 mt-2">{children}</h3>,
+                    hr:     () => <hr className="border-border my-2" />,
+                    code:   ({ children }) => <code className="bg-elevated px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                  }}
+                >
+                  {msg.text}
+                </ReactMarkdown>
+              )}
             </div>
           </div>
         ))}

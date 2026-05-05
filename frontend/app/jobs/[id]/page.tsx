@@ -121,6 +121,15 @@ export default function JobDetailPage() {
 
   return (
     <div className="max-w-3xl">
+      <button
+        onClick={() => router.back()}
+        className="flex items-center gap-1.5 text-xs text-ink-muted hover:text-ink mb-4 transition-colors"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        Back
+      </button>
       <Header
         title={job.title}
         subtitle={job.company}

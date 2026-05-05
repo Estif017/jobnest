@@ -18,9 +18,13 @@ export default function JobsPage() {
   const [fitScores, setFitScores] = useState<Record<number, number>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState("");
+  const [page, setPage] = useState(0);
+
+  const PAGE_SIZE = 25;
 
   const load = useCallback(() => {
     setLoading(true);
+    setPage(0);
     searchJobs(keyword, status === "All" ? "" : status)
       .then(setJobs)
       .catch(() => setJobs([]))
@@ -71,7 +75,7 @@ export default function JobsPage() {
             title={jobs.length === 0 ? "Add jobs first to run AI analysis" : "Run AI fit analysis on all unscored jobs"}
             className="btn-ghost text-sm"
           >
-            {analyzing ? analyzeProgress : "Analyze All"}
+            {analyzing ? "Analyzing…" : "Analyze All"}
           </button>
           <Link href="/scan" className="btn-primary text-sm">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -122,50 +126,93 @@ export default function JobsPage() {
           description="Try adjusting your filters or scan for new roles."
           action={<Link href="/scan" className="btn-primary text-sm">Scan for jobs</Link>}
         />
-      ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-base">
-                <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Title</th>
-                <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Company</th>
-                <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden md:table-cell">Location</th>
-                <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Status</th>
-                <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden lg:table-cell">Fit</th>
-                <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden lg:table-cell">Added</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {jobs.map((job) => (
-                <tr key={job.id} className="hover:bg-base transition-colors group">
-                  <td className="px-5 py-3.5">
-                    <Link href={`/jobs/${job.id}`} className="font-medium text-ink hover:text-accent-600 transition-colors">
-                      {job.title}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3.5 text-ink-secondary text-sm">{job.company}</td>
-                  <td className="px-5 py-3.5 text-ink-muted text-sm hidden md:table-cell">{job.location || "—"}</td>
-                  <td className="px-5 py-3.5"><StatusBadge status={job.status} /></td>
-                  <td className="px-5 py-3.5 hidden lg:table-cell"><FitScore score={fitScores[job.id] ?? null} /></td>
-                  <td className="px-5 py-3.5 text-ink-muted text-xs hidden lg:table-cell">{job.date_added}</td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Link href={`/jobs/${job.id}`} className="btn-ghost text-xs py-1 px-2.5">View</Link>
-                      <button
-                        onClick={() => handleDelete(job.id)}
-                        className="text-xs px-2.5 py-1 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      ) : (() => {
+        const totalPages = Math.ceil(jobs.length / PAGE_SIZE);
+        const pageJobs   = jobs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+        return (
+          <>
+            <div className="card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-base">
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Title</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Company</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden md:table-cell">Location</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Status</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden lg:table-cell">Fit</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden lg:table-cell">Added</th>
+                    <th className="px-5 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {pageJobs.map((job) => (
+                    <tr key={job.id} className="hover:bg-base transition-colors group">
+                      <td className="px-5 py-3.5">
+                        <Link href={`/jobs/${job.id}`} className="font-medium text-ink hover:text-accent-600 transition-colors">
+                          {job.title}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3.5 text-ink-secondary text-sm">{job.company}</td>
+                      <td className="px-5 py-3.5 text-ink-muted text-sm hidden md:table-cell">{job.location || "—"}</td>
+                      <td className="px-5 py-3.5"><StatusBadge status={job.status} /></td>
+                      <td className="px-5 py-3.5 hidden lg:table-cell"><FitScore score={fitScores[job.id] ?? null} /></td>
+                      <td className="px-5 py-3.5 text-ink-muted text-xs hidden lg:table-cell">{job.date_added}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Link href={`/jobs/${job.id}`} className="btn-ghost text-xs py-1 px-2.5">View</Link>
+                          <button
+                            onClick={() => handleDelete(job.id)}
+                            className="text-xs px-2.5 py-1 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4 px-1">
+                <p className="text-xs text-ink-muted">
+                  Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, jobs.length)} of {jobs.length}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="btn-ghost text-xs py-1 px-2.5 disabled:opacity-40"
+                  >
+                    ← Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i).map((i) => (
+                    <button
+                      key={i}
+                      onClick={() => setPage(i)}
+                      className={`text-xs w-7 h-7 rounded-lg font-medium transition-colors ${
+                        i === page
+                          ? "bg-accent-600 text-white"
+                          : "text-ink-secondary hover:bg-elevated"
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={page === totalPages - 1}
+                    className="btn-ghost text-xs py-1 px-2.5 disabled:opacity-40"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }

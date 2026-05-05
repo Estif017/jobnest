@@ -17,6 +17,51 @@ const CURRENCIES  = ["USD", "EUR", "GBP", "CAD", "Other"];
 
 type SectionKey = "links" | "career" | "location" | "skills";
 
+function PillButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+        active
+          ? "bg-accent-600 border-accent-600 text-white"
+          : "border-border text-ink-secondary hover:border-accent-300 hover:text-accent-700 hover:bg-accent-50"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Section({
+  title,
+  sectionKey,
+  saving,
+  saved,
+  onSave,
+  children,
+}: {
+  title: string;
+  sectionKey: SectionKey;
+  saving: SectionKey | null;
+  saved: SectionKey | null;
+  onSave: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="card p-6 space-y-4">
+      <h2 className="text-sm font-semibold text-ink">{title}</h2>
+      {children}
+      <button
+        onClick={onSave}
+        disabled={saving === sectionKey}
+        className="btn-primary text-xs py-1.5 px-4"
+      >
+        {saving === sectionKey ? "Saving…" : saved === sectionKey ? "Saved ✓" : "Save changes"}
+      </button>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { data: session } = useSession();
   const [data,    setData]    = useState<OnboardingData | null>(null);
@@ -25,12 +70,11 @@ export default function ProfilePage() {
   const [saved,   setSaved]   = useState<SectionKey | null>(null);
   const [error,   setError]   = useState("");
 
-  // Password change state
-  const [pwCurrent,  setPwCurrent]  = useState("");
-  const [pwNew,      setPwNew]      = useState("");
-  const [pwConfirm,  setPwConfirm]  = useState("");
-  const [pwLoading,  setPwLoading]  = useState(false);
-  const [pwMsg,      setPwMsg]      = useState("");
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew,     setPwNew]     = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwMsg,     setPwMsg]     = useState("");
 
   useEffect(() => {
     fetchOnboardingData()
@@ -76,8 +120,8 @@ export default function ProfilePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            user_id: Number(session?.user?.userId ?? 1),
-            current: pwCurrent,
+            user_id:      Number(session?.user?.userId ?? 1),
+            current:      pwCurrent,
             new_password: pwNew,
           }),
         }
@@ -96,7 +140,7 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-[#525252] text-sm">Loading profile...</p>
+        <div className="w-5 h-5 border-2 border-border border-t-accent-600 rounded-full animate-spin" />
       </div>
     );
   }
@@ -104,7 +148,7 @@ export default function ProfilePage() {
   if (!data) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-red-400 text-sm">{error || "No profile data found."}</p>
+        <p className="text-rose-600 text-sm">{error || "No profile data found."}</p>
       </div>
     );
   }
@@ -113,276 +157,208 @@ export default function ProfilePage() {
   const isEmailProvider = (session?.user as any)?.provider === "email" || !(session?.user as any)?.provider;
 
   return (
-    <div className="max-w-2xl mx-auto py-10 px-4 space-y-6">
-      <h1 className="text-white font-bold text-2xl">Your Profile</h1>
+    <div className="max-w-2xl space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold text-ink tracking-tight">Profile</h1>
+        <p className="text-sm text-ink-secondary mt-0.5">Manage your career preferences and account settings.</p>
+      </div>
 
       {error && (
-        <p className="text-red-400 text-sm bg-red-900/20 border border-red-900/40 rounded px-3 py-2">
-          {error}
-        </p>
+        <p className="text-rose-600 text-sm bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5">{error}</p>
       )}
 
-      {/* Account section */}
-      <div className="bg-[#111111] border border-[#1f1f1f] rounded-lg p-6 space-y-3">
-        <h2 className="text-white font-semibold text-base">Account</h2>
-        <div className="flex items-center justify-between">
-          <span className="text-[#a3a3a3] text-sm">Email</span>
-          <span className="text-white text-sm">{session?.user?.email ?? "—"}</span>
+      {/* Account */}
+      <div className="card p-6 space-y-3">
+        <h2 className="text-sm font-semibold text-ink">Account</h2>
+        <div className="flex items-center justify-between py-1 border-b border-border">
+          <span className="text-xs text-ink-muted">Email</span>
+          <span className="text-sm text-ink">{session?.user?.email ?? "—"}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[#a3a3a3] text-sm">Sign-in method</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${
+        <div className="flex items-center justify-between py-1">
+          <span className="text-xs text-ink-muted">Sign-in method</span>
+          <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
             isEmailProvider
-              ? "bg-blue-900/40 text-blue-300 border border-blue-800"
-              : "bg-green-900/40 text-green-300 border border-green-800"
+              ? "bg-accent-50 text-accent-700"
+              : "bg-emerald-50 text-emerald-700"
           }`}>
             {isEmailProvider ? "Email" : "Google"}
           </span>
         </div>
         {data.name && (
-          <div className="flex items-center justify-between">
-            <span className="text-[#a3a3a3] text-sm">Name (from resume)</span>
-            <span className="text-white text-sm">{data.name}</span>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-xs text-ink-muted">Name (from resume)</span>
+            <span className="text-sm text-ink">{data.name}</span>
           </div>
         )}
       </div>
 
       {/* Resume & Links */}
-      <div className="bg-[#111111] border border-[#1f1f1f] rounded-lg p-6 space-y-4">
-        <h2 className="text-white font-semibold text-base">Resume & Links</h2>
+      <Section title="Resume & Links" sectionKey="links" saving={saving} saved={saved}
+        onSave={() => saveSection("links", {
+          github_username: data.github_username,
+          linkedin_url:    data.linkedin_url,
+          portfolio_url:   data.portfolio_url,
+        })}>
         {[
           { label: "GitHub Username", key: "github_username" as const, placeholder: "octocat" },
           { label: "LinkedIn URL",    key: "linkedin_url"    as const, placeholder: "https://linkedin.com/in/..." },
           { label: "Portfolio URL",   key: "portfolio_url"   as const, placeholder: "https://yoursite.com" },
         ].map(({ label, key, placeholder }) => (
-          <div key={key} className="space-y-1">
-            <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">{label}</label>
+          <div key={key}>
+            <label className="label">{label}</label>
             <input
               type="text"
               value={data[key] as string}
               onChange={(e) => set(key, e.target.value)}
               placeholder={placeholder}
-              className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
+              className="input mt-1"
             />
           </div>
         ))}
-        <button
-          onClick={() => saveSection("links", {
-            github_username: data.github_username,
-            linkedin_url:    data.linkedin_url,
-            portfolio_url:   data.portfolio_url,
-          })}
-          disabled={saving === "links"}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded transition-colors"
-        >
-          {saving === "links" ? "Saving..." : saved === "links" ? "Saved!" : "Save changes"}
-        </button>
-      </div>
+      </Section>
 
       {/* Career Goals */}
-      <div className="bg-[#111111] border border-[#1f1f1f] rounded-lg p-6 space-y-4">
-        <h2 className="text-white font-semibold text-base">Career Goals</h2>
-
-        <div className="space-y-1">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Target Job Title</label>
+      <Section title="Career Goals" sectionKey="career" saving={saving} saved={saved}
+        onSave={() => saveSection("career", {
+          target_role:       data.target_role,
+          target_industries: data.target_industries,
+          seniority_level:   data.seniority_level,
+          employment_types:  data.employment_types,
+          work_model:        data.work_model,
+        })}>
+        <div>
+          <label className="label flex items-center gap-2">
+            Target Job Title
+            {!data.target_role && (
+              <span className="text-amber-600 text-[10px] font-medium bg-amber-50 px-1.5 py-0.5 rounded-full">
+                Used by the AI hunter — fill this in
+              </span>
+            )}
+          </label>
           <input
             type="text"
             value={data.target_role}
             onChange={(e) => set("target_role", e.target.value)}
             placeholder="e.g. Software Engineer"
-            className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
+            className="input mt-1"
           />
         </div>
 
-        <div className="space-y-2">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Target Industries</label>
+        <div>
+          <label className="label mb-2">Target Industries</label>
           <div className="flex flex-wrap gap-2">
             {INDUSTRIES.map((ind) => (
-              <button
-                key={ind}
-                onClick={() => toggleList("target_industries", ind)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                  data.target_industries.includes(ind)
-                    ? "bg-blue-600 border-blue-600 text-white"
-                    : "border-[#2a2a2a] text-[#a3a3a3] hover:border-blue-500 hover:text-white"
-                }`}
-              >
+              <PillButton key={ind} active={data.target_industries.includes(ind)} onClick={() => toggleList("target_industries", ind)}>
                 {ind}
-              </button>
+              </PillButton>
             ))}
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Seniority Level</label>
+        <div>
+          <label className="label mb-2">Seniority Level</label>
           <div className="flex flex-wrap gap-2">
             {SENIORITY.map((s) => (
-              <button
-                key={s}
-                onClick={() => set("seniority_level", s)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                  data.seniority_level === s
-                    ? "bg-blue-600 border-blue-600 text-white"
-                    : "border-[#2a2a2a] text-[#a3a3a3] hover:border-blue-500 hover:text-white"
-                }`}
-              >
+              <PillButton key={s} active={data.seniority_level === s} onClick={() => set("seniority_level", s)}>
                 {s}
-              </button>
+              </PillButton>
             ))}
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Employment Type</label>
+        <div>
+          <label className="label mb-2">Employment Type</label>
           <div className="flex flex-wrap gap-2">
             {EMP_TYPES.map((t) => (
-              <button
-                key={t}
-                onClick={() => toggleList("employment_types", t)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                  data.employment_types.includes(t)
-                    ? "bg-blue-600 border-blue-600 text-white"
-                    : "border-[#2a2a2a] text-[#a3a3a3] hover:border-blue-500 hover:text-white"
-                }`}
-              >
+              <PillButton key={t} active={data.employment_types.includes(t)} onClick={() => toggleList("employment_types", t)}>
                 {t}
-              </button>
+              </PillButton>
             ))}
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Work Model</label>
+        <div>
+          <label className="label mb-2">Work Model</label>
           <div className="flex flex-wrap gap-2">
             {WORK_MODELS.map((m) => (
-              <button
-                key={m}
-                onClick={() => set("work_model", m)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                  data.work_model === m
-                    ? "bg-blue-600 border-blue-600 text-white"
-                    : "border-[#2a2a2a] text-[#a3a3a3] hover:border-blue-500 hover:text-white"
-                }`}
-              >
+              <PillButton key={m} active={data.work_model === m} onClick={() => set("work_model", m)}>
                 {m}
-              </button>
+              </PillButton>
             ))}
           </div>
         </div>
-
-        <button
-          onClick={() => saveSection("career", {
-            target_role:       data.target_role,
-            target_industries: data.target_industries,
-            seniority_level:   data.seniority_level,
-            employment_types:  data.employment_types,
-            work_model:        data.work_model,
-          })}
-          disabled={saving === "career"}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded transition-colors"
-        >
-          {saving === "career" ? "Saving..." : saved === "career" ? "Saved!" : "Save changes"}
-        </button>
-      </div>
+      </Section>
 
       {/* Location & Salary */}
-      <div className="bg-[#111111] border border-[#1f1f1f] rounded-lg p-6 space-y-4">
-        <h2 className="text-white font-semibold text-base">Location & Salary</h2>
-
-        <div className="space-y-1">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Current Location</label>
+      <Section title="Location & Salary" sectionKey="location" saving={saving} saved={saved}
+        onSave={() => saveSection("location", {
+          current_location:   data.current_location,
+          open_to_relocation: data.open_to_relocation,
+          salary_min:         data.salary_min,
+          salary_max:         data.salary_max,
+          salary_currency:    data.salary_currency,
+        })}>
+        <div>
+          <label className="label">Current Location</label>
           <input
             type="text"
             value={data.current_location}
             onChange={(e) => set("current_location", e.target.value)}
             placeholder="e.g. New York, USA"
-            className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
+            className="input mt-1"
           />
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-[#a3a3a3] text-sm">Open to relocation</span>
+        <div className="flex items-center justify-between py-1">
+          <span className="text-sm text-ink-secondary">Open to relocation</span>
           <button
             onClick={() => set("open_to_relocation", !data.open_to_relocation)}
-            className={`w-12 h-6 rounded-full transition-colors relative ${
-              data.open_to_relocation ? "bg-blue-600" : "bg-[#2a2a2a]"
+            className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
+              data.open_to_relocation ? "bg-accent-600" : "bg-border"
             }`}
           >
-            <span
-              className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                data.open_to_relocation ? "translate-x-7" : "translate-x-1"
-              }`}
-            />
+            <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
+              data.open_to_relocation ? "translate-x-6" : "translate-x-1"
+            }`} />
           </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Salary Min</label>
-            <input
-              type="number"
-              value={data.salary_min || ""}
-              onChange={(e) => set("salary_min", Number(e.target.value))}
-              placeholder="50000"
-              className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
-            />
+          <div>
+            <label className="label">Salary Min</label>
+            <input type="number" value={data.salary_min || ""} onChange={(e) => set("salary_min", Number(e.target.value))} placeholder="50000" className="input mt-1" />
           </div>
-          <div className="space-y-1">
-            <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Salary Max</label>
-            <input
-              type="number"
-              value={data.salary_max || ""}
-              onChange={(e) => set("salary_max", Number(e.target.value))}
-              placeholder="120000"
-              className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
-            />
+          <div>
+            <label className="label">Salary Max</label>
+            <input type="number" value={data.salary_max || ""} onChange={(e) => set("salary_max", Number(e.target.value))} placeholder="120000" className="input mt-1" />
           </div>
         </div>
 
-        <div className="space-y-1">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Currency</label>
-          <select
-            value={data.salary_currency}
-            onChange={(e) => set("salary_currency", e.target.value)}
-            className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
-          >
+        <div>
+          <label className="label">Currency</label>
+          <select value={data.salary_currency} onChange={(e) => set("salary_currency", e.target.value)} className="input mt-1">
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-
-        <button
-          onClick={() => saveSection("location", {
-            current_location:   data.current_location,
-            open_to_relocation: data.open_to_relocation,
-            salary_min:         data.salary_min,
-            salary_max:         data.salary_max,
-            salary_currency:    data.salary_currency,
-          })}
-          disabled={saving === "location"}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded transition-colors"
-        >
-          {saving === "location" ? "Saving..." : saved === "location" ? "Saved!" : "Save changes"}
-        </button>
-      </div>
+      </Section>
 
       {/* Skills & Experience */}
-      <div className="bg-[#111111] border border-[#1f1f1f] rounded-lg p-6 space-y-4">
-        <h2 className="text-white font-semibold text-base">Skills & Experience</h2>
-
-        <div className="space-y-1">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Years of Experience</label>
-          <select
-            value={data.years_experience}
-            onChange={(e) => set("years_experience", e.target.value)}
-            className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
-          >
-            <option value="">Select...</option>
+      <Section title="Skills & Experience" sectionKey="skills" saving={saving} saved={saved}
+        onSave={() => saveSection("skills", {
+          years_experience:  data.years_experience,
+          top_skills_manual: data.top_skills_manual,
+          certifications:    data.certifications,
+        })}>
+        <div>
+          <label className="label">Years of Experience</label>
+          <select value={data.years_experience} onChange={(e) => set("years_experience", e.target.value)} className="input mt-1">
+            <option value="">Select…</option>
             {EXP_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
         </div>
 
         <div className="space-y-2">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Top 3 Skills</label>
+          <label className="label">Top 3 Skills</label>
           {[0, 1, 2].map((i) => (
             <input
               key={i}
@@ -394,101 +370,76 @@ export default function ProfilePage() {
                 set("top_skills_manual", updated);
               }}
               placeholder={`Skill ${i + 1}`}
-              className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
+              className="input"
             />
           ))}
         </div>
 
-        <div className="space-y-1">
-          <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">
-            Certifications <span className="normal-case text-[#525252]">(optional)</span>
+        <div>
+          <label className="label">
+            Certifications <span className="text-ink-muted font-normal normal-case">(optional)</span>
           </label>
           <textarea
             rows={3}
             value={data.certifications}
             onChange={(e) => set("certifications", e.target.value)}
-            placeholder="e.g. AWS Certified Solutions Architect, Google Cloud Professional..."
-            className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500 resize-none"
+            placeholder="e.g. AWS Certified Solutions Architect, Google Cloud Professional…"
+            className="input mt-1 resize-none"
           />
         </div>
 
         {data.skills && data.skills.length > 0 && (
-          <div className="space-y-2">
-            <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Skills from Resume</label>
+          <div>
+            <label className="label mb-2">Skills from Resume</label>
             <div className="flex flex-wrap gap-1.5">
               {data.skills.map((s) => (
-                <span key={s} className="text-xs px-2 py-1 bg-[#1f1f1f] text-[#a3a3a3] rounded">
+                <span key={s} className="text-xs px-2.5 py-0.5 bg-elevated border border-border text-ink-secondary rounded-full">
                   {s}
                 </span>
               ))}
             </div>
           </div>
         )}
+      </Section>
 
-        <button
-          onClick={() => saveSection("skills", {
-            years_experience:  data.years_experience,
-            top_skills_manual: data.top_skills_manual,
-            certifications:    data.certifications,
-          })}
-          disabled={saving === "skills"}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded transition-colors"
-        >
-          {saving === "skills" ? "Saving..." : saved === "skills" ? "Saved!" : "Save changes"}
-        </button>
-      </div>
-
-      {/* Change Password — email users only */}
+      {/* Change Password */}
       {isEmailProvider && (
-        <div className="bg-[#111111] border border-[#1f1f1f] rounded-lg p-6 space-y-4">
-          <h2 className="text-white font-semibold text-base">Change Password</h2>
+        <div className="card p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-ink">Change Password</h2>
 
           {pwMsg && (
-            <p className={`text-sm px-3 py-2 rounded border ${
+            <p className={`text-sm px-3 py-2 rounded-xl border ${
               pwMsg.toLowerCase().includes("updated")
-                ? "text-green-400 bg-green-900/20 border-green-900/40"
-                : "text-red-400 bg-red-900/20 border-red-900/40"
+                ? "text-emerald-700 bg-emerald-50 border-emerald-100"
+                : "text-rose-600 bg-rose-50 border-rose-100"
             }`}>
               {pwMsg}
             </p>
           )}
 
-          <div className="space-y-1">
-            <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Current Password</label>
-            <input
-              type="password"
-              value={pwCurrent}
-              onChange={(e) => setPwCurrent(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">New Password</label>
-            <input
-              type="password"
-              value={pwNew}
-              onChange={(e) => setPwNew(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[#a3a3a3] text-xs uppercase tracking-wider">Confirm New Password</label>
-            <input
-              type="password"
-              value={pwConfirm}
-              onChange={(e) => setPwConfirm(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-white text-sm rounded px-3 py-2.5 focus:outline-none focus:border-blue-500"
-            />
-          </div>
+          {[
+            { label: "Current Password", val: pwCurrent, set: setPwCurrent },
+            { label: "New Password",     val: pwNew,     set: setPwNew },
+            { label: "Confirm Password", val: pwConfirm, set: setPwConfirm },
+          ].map(({ label, val, set: setter }) => (
+            <div key={label}>
+              <label className="label">{label}</label>
+              <input
+                type="password"
+                value={val}
+                onChange={(e) => setter(e.target.value)}
+                placeholder="••••••••"
+                className="input mt-1"
+              />
+            </div>
+          ))}
+
           <button
             onClick={handleChangePassword}
             disabled={pwLoading}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded transition-colors"
+            className="btn-primary text-xs py-1.5 px-4"
           >
-            {pwLoading ? "Updating..." : "Update Password"}
+            {pwLoading ? "Updating…" : "Update Password"}
           </button>
         </div>
       )}
