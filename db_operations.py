@@ -447,7 +447,7 @@ def save_search_session(query: str, job_count: int, user_id: int = 1) -> int:
 # Chat history persistence
 # ---------------------------------------------------------------------------
 
-def save_chat_message(role: str, message: str, user_id: int = 1) -> None:
+def save_chat_message(role: str, message: str, user_id: int = 1, session_id: Optional[str] = None) -> None:
     """
     Appends one message to the chat_history table.
     role must be 'user' or 'assistant' to match the Claude messages API.
@@ -456,30 +456,76 @@ def save_chat_message(role: str, message: str, user_id: int = 1) -> None:
     cursor = conn.cursor()
     timestamp = datetime.now().isoformat()
     cursor.execute(
-        "INSERT INTO chat_history (role, message, timestamp, user_id) VALUES (?, ?, ?, ?)",
-        (role, message, timestamp, user_id),
+        "INSERT INTO chat_history (role, message, timestamp, user_id, session_id) VALUES (?, ?, ?, ?, ?)",
+        (role, message, timestamp, user_id, session_id),
     )
     conn.commit()
     conn.close()
 
 
-def load_chat_history(limit: int = 20, user_id: int = 1) -> List[dict]:
+def load_chat_history(limit: int = 20, user_id: int = 1, session_id: Optional[str] = None) -> List[dict]:
     """
-    Returns the last `limit` messages from chat_history, oldest first.
-    Each entry is a plain dict with keys: role, message, timestamp.
+    Returns the last `limit` messages for a user, oldest first.
+    If session_id is given, restricts to that session only.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    if session_id:
+        cursor.execute(
+            "SELECT role, message, timestamp FROM chat_history "
+            "WHERE COALESCE(user_id, 1) = ? AND session_id = ? ORDER BY id DESC LIMIT ?",
+            (user_id, session_id, limit),
+        )
+    else:
+        cursor.execute(
+            "SELECT role, message, timestamp FROM chat_history "
+            "WHERE COALESCE(user_id, 1) = ? ORDER BY id DESC LIMIT ?",
+            (user_id, limit),
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"role": row["role"], "message": row["message"], "timestamp": row["timestamp"]}
+        for row in reversed(rows)
+    ]
+
+
+def get_chat_sessions(user_id: int = 1) -> List[dict]:
+    """
+    Returns all distinct chat sessions for a user, newest first.
+    Each entry: {session_id, title, last_active}.
+    Title = first user message in the session, truncated to 50 chars.
     """
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT role, message, timestamp FROM chat_history WHERE COALESCE(user_id, 1) = ? ORDER BY id DESC LIMIT ?",
-        (user_id, limit),
+        """
+        SELECT
+            session_id,
+            (SELECT message FROM chat_history h2
+             WHERE h2.session_id = h1.session_id
+               AND COALESCE(h2.user_id, 1) = ?
+               AND h2.role = 'user'
+             ORDER BY h2.id ASC LIMIT 1) AS title,
+            MAX(timestamp) AS last_active
+        FROM chat_history h1
+        WHERE COALESCE(user_id, 1) = ?
+          AND session_id IS NOT NULL
+        GROUP BY session_id
+        ORDER BY last_active DESC
+        LIMIT 30
+        """,
+        (user_id, user_id),
     )
     rows = cursor.fetchall()
     conn.close()
-    # fetchall returns newest-first; reverse so caller gets chronological order
     return [
-        {"role": row["role"], "message": row["message"], "timestamp": row["timestamp"]}
-        for row in reversed(rows)
+        {
+            "session_id":  row["session_id"],
+            "title":       (row["title"] or "New chat")[:50],
+            "last_active": row["last_active"],
+        }
+        for row in rows
     ]
 
 

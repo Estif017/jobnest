@@ -332,18 +332,31 @@ export const markOnboardingComplete = (userId: string): Promise<{ message: strin
 // ---------------------------------------------------------------------------
 
 export interface ChatHistoryMessage {
-  role:      string;   // 'user' or 'assistant'
+  role:      string;
   message:   string;
   timestamp: string;
 }
 
-export const fetchCoachHistory = (): Promise<ChatHistoryMessage[]> =>
-  apiFetch("/coach/history");
+export interface ChatSession {
+  session_id:  string;
+  title:       string;
+  last_active: string;
+}
 
-export const coachChat = (message: string, jobId?: number): Promise<{ reply: string }> =>
+export const fetchCoachHistory = (sessionId?: string): Promise<ChatHistoryMessage[]> =>
+  apiFetch(`/coach/history${sessionId ? `?session_id=${sessionId}` : ""}`);
+
+export const fetchCoachSessions = (): Promise<ChatSession[]> =>
+  apiFetch("/coach/sessions");
+
+export const coachChat = (
+  message: string,
+  jobId?: number,
+  sessionId?: string,
+): Promise<{ reply: string }> =>
   apiFetch("/coach/chat", {
     method: "POST",
-    body: JSON.stringify({ message, job_id: jobId ?? null }),
+    body: JSON.stringify({ message, job_id: jobId ?? null, session_id: sessionId ?? null }),
   });
 
 // ---------------------------------------------------------------------------

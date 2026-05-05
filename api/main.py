@@ -45,6 +45,7 @@ from db_operations import (
     save_github_profile,
     save_chat_message,
     load_chat_history,
+    get_chat_sessions,
     save_onboarding_data,
     load_onboarding_data,
     get_notifications,
@@ -64,7 +65,7 @@ from smart_scraper import run_smart_search
 
 from api.schemas import (
     JobCreate, JobUpdate, ScrapeRequest, GitHubFetchRequest,
-    CoachChatRequest, CoachChatResponse, ChatMessage,
+    CoachChatRequest, CoachChatResponse, ChatMessage, ChatSession,
     JobResponse, JobAnalysisResponse, GitHubProfileResponse,
     ScoredJobResponse, DashboardStats,
     OnboardingDataRequest, OnboardingDataResponse,
@@ -1327,10 +1328,16 @@ def github_fetch(body: GitHubFetchRequest, user_id: int = Depends(get_user_id)):
 # Coach
 # ---------------------------------------------------------------------------
 
+@app.get("/coach/sessions", response_model=List[ChatSession])
+def coach_sessions(user_id: int = Depends(get_user_id)):
+    """Returns all distinct chat sessions for this user, newest first."""
+    return [ChatSession(**s) for s in get_chat_sessions(user_id=user_id)]
+
+
 @app.get("/coach/history", response_model=List[ChatMessage])
-def coach_history(user_id: int = Depends(get_user_id)):
-    """Returns the last 20 coach chat messages, oldest first."""
-    return [ChatMessage(**m) for m in load_chat_history(limit=20, user_id=user_id)]
+def coach_history(session_id: Optional[str] = None, user_id: int = Depends(get_user_id)):
+    """Returns up to 50 messages for a session (or all recent if no session given), oldest first."""
+    return [ChatMessage(**m) for m in load_chat_history(limit=50, user_id=user_id, session_id=session_id)]
 
 
 @app.post("/coach/chat", response_model=CoachChatResponse)
@@ -1346,7 +1353,7 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
 
     import threading
     # Persist the user message to SQLite; embed in background so it never blocks
-    save_chat_message("user", body.message, user_id)
+    save_chat_message("user", body.message, user_id, session_id=body.session_id)
     threading.Thread(target=embed_and_store, args=(user_id, body.message, "user"), daemon=True).start()
 
     # Retrieve 3 most relevant past messages for this user
@@ -1372,8 +1379,8 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
         )
         system += f"\n\nWhat you know about this user from past conversations:\n{memory_lines}"
 
-    # Last 4 DB messages as short-term conversation history
-    history  = load_chat_history(limit=4, user_id=user_id)
+    # Last 4 messages from this session as short-term conversation history
+    history  = load_chat_history(limit=4, user_id=user_id, session_id=body.session_id)
     messages = [{"role": m["role"], "content": m["message"]} for m in history]
     messages.append({"role": "user", "content": body.message})
 
@@ -1386,7 +1393,7 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
             messages=messages,
         )
         reply = response.content[0].text
-        save_chat_message("assistant", reply, user_id)
+        save_chat_message("assistant", reply, user_id, session_id=body.session_id)
         threading.Thread(target=embed_and_store, args=(user_id, reply, "assistant"), daemon=True).start()
         return CoachChatResponse(reply=reply)
     except Exception as e:

@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   fetchNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  fetchCoachSessions,
   AppNotification,
+  ChatSession,
 } from "@/lib/api";
 
 const links = [
@@ -79,6 +81,16 @@ export default function Sidebar() {
   const [unreadCount, setUnreadCount]     = useState(0);
   const [panelOpen, setPanelOpen]         = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+
+  const loadSessions = useCallback(() => {
+    fetchCoachSessions().then(setChatSessions).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions, pathname]);  // reload when navigating (new session was created)
 
   const initials = session?.user?.email
     ? session.user.email.slice(0, 2).toUpperCase()
@@ -166,28 +178,79 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-2 space-y-0.5">
+      <nav className="flex-1 px-3 py-2 overflow-y-auto">
         <p className="text-[10px] font-semibold text-ink-disabled uppercase tracking-widest px-3 mb-2">Navigation</p>
-        {links.map(({ href, label, icon }) => {
-          const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                isActive
-                  ? "bg-accent-50 text-accent-700 shadow-sm"
-                  : "text-ink-secondary hover:text-ink hover:bg-elevated"
-              }`}
-            >
-              <span className={isActive ? "text-accent-600" : "text-ink-muted"}>{icon}</span>
-              {label}
-              {isActive && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-500" />
-              )}
-            </Link>
-          );
-        })}
+        <div className="space-y-0.5">
+          {links.map(({ href, label, icon }) => {
+            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            const isCoach  = href === "/coach";
+
+            return (
+              <div key={href}>
+                <div className={`flex items-center gap-1 rounded-xl ${isActive ? "bg-accent-50 shadow-sm" : ""}`}>
+                  <Link
+                    href={href}
+                    className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      isActive
+                        ? "text-accent-700"
+                        : "text-ink-secondary hover:text-ink hover:bg-elevated"
+                    }`}
+                  >
+                    <span className={isActive ? "text-accent-600" : "text-ink-muted"}>{icon}</span>
+                    {label}
+                    {isActive && !isCoach && (
+                      <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-500" />
+                    )}
+                  </Link>
+
+                  {/* New Chat button — only visible on AI Coach row */}
+                  {isCoach && (
+                    <button
+                      onClick={() => {
+                        const id = crypto.randomUUID();
+                        router.push(`/coach?session=${id}`);
+                      }}
+                      title="New chat"
+                      className="mr-1.5 w-6 h-6 rounded-lg flex items-center justify-center text-ink-muted hover:text-accent-600 hover:bg-accent-50 transition-colors shrink-0"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 5v14M5 12h14"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* Session sub-list — shown under AI Coach */}
+                {isCoach && chatSessions.length > 0 && (
+                  <div className="ml-3 mt-0.5 mb-1 space-y-0.5 border-l border-border pl-3">
+                    {chatSessions.slice(0, 6).map((s) => {
+                      const sessionActive = pathname.startsWith("/coach") &&
+                        (typeof window !== "undefined"
+                          ? new URLSearchParams(window.location.search).get("session") === s.session_id
+                          : false);
+                      return (
+                        <Link
+                          key={s.session_id}
+                          href={`/coach?session=${s.session_id}`}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors truncate ${
+                            sessionActive
+                              ? "bg-accent-100 text-accent-700 font-medium"
+                              : "text-ink-muted hover:text-ink hover:bg-elevated"
+                          }`}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                          </svg>
+                          <span className="truncate">{s.title}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </nav>
 
       {/* User footer */}

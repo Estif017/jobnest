@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { coachChat, fetchCoachHistory } from "@/lib/api";
 
@@ -40,16 +41,32 @@ function TypingIndicator() {
 }
 
 export default function CoachPage() {
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  const sessionId    = searchParams.get("session") ?? undefined;
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef   = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // When no session param, redirect to the new-session flow immediately
   useEffect(() => {
-    fetchCoachHistory()
+    if (!sessionId) {
+      const id = crypto.randomUUID();
+      router.replace(`/coach?session=${id}`);
+    }
+  }, [sessionId, router]);
+
+  // Load history whenever the session changes
+  useEffect(() => {
+    if (!sessionId) return;
+    setHistoryLoading(true);
+    setMessages([]);
+    fetchCoachHistory(sessionId)
       .then((history) => {
         setMessages(
           history.map((m) => ({
@@ -60,7 +77,7 @@ export default function CoachPage() {
       })
       .catch(() => {})
       .finally(() => setHistoryLoading(false));
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -81,7 +98,7 @@ export default function CoachPage() {
     }
 
     try {
-      const { reply } = await coachChat(trimmed);
+      const { reply } = await coachChat(trimmed, undefined, sessionId);
       setMessages((prev) => [...prev, { role: "coach", text: reply }]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong.");

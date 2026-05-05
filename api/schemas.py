@@ -50,8 +50,9 @@ class GitHubFetchRequest(BaseModel):
 
 class CoachChatRequest(BaseModel):
     """Body for POST /coach/chat."""
-    message: str
-    job_id: Optional[int] = None   # Optional job context to include in the prompt
+    message:    str
+    job_id:     Optional[int] = None
+    session_id: Optional[str] = None
 
 
 class CoachChatResponse(BaseModel):
@@ -61,9 +62,16 @@ class CoachChatResponse(BaseModel):
 
 class ChatMessage(BaseModel):
     """One entry from the chat_history table."""
-    role:      str   # 'user' or 'assistant'
+    role:      str
     message:   str
     timestamp: str
+
+
+class ChatSession(BaseModel):
+    """One row from get_chat_sessions()."""
+    session_id:  str
+    title:       str
+    last_active: str
 
 
 # ---------------------------------------------------------------------------

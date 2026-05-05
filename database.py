@@ -171,6 +171,9 @@ def migrate_db() -> None:
     for tbl in ["jobs", "github_profile", "ai_analyses", "chat_history", "search_sessions"]:
         _add_col(tbl, "user_id", "INTEGER REFERENCES users(id)")
 
+    # session_id for multi-session coach chat
+    _add_col("chat_history", "session_id", "TEXT")
+
     # Back-fill existing rows so they belong to user 1
     for tbl in ["jobs", "user_profile", "github_profile", "ai_analyses", "chat_history", "search_sessions"]:
         cursor.execute(f"UPDATE {tbl} SET user_id = 1 WHERE user_id IS NULL")
