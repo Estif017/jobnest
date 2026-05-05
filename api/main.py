@@ -105,10 +105,17 @@ app.include_router(auth_router)
 
 @app.on_event("startup")
 def startup():
-    """Initialize the database and start the background job hunter."""
+    """Initialize the database, start the background job hunter, and pre-warm RAG model."""
     init_db()
     migrate_db()
     app.state.scheduler = start_scheduler()
+    # Pre-warm sentence-transformers so the first coach message isn't slow
+    try:
+        from coach_memory import _get_collection
+        _get_collection()
+        print("[startup] Coach RAG memory warmed up.")
+    except Exception as e:
+        print(f"[startup] Coach RAG warm-up skipped: {e}")
 
 
 @app.on_event("shutdown")
@@ -1338,9 +1345,10 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
     import anthropic
     from coach_memory import embed_and_store, retrieve_relevant
 
-    # Persist the user message to SQLite + ChromaDB
+    import threading
+    # Persist the user message to SQLite; embed in background so it never blocks
     save_chat_message("user", body.message, user_id)
-    embed_and_store(user_id, body.message, "user")
+    threading.Thread(target=embed_and_store, args=(user_id, body.message, "user"), daemon=True).start()
 
     # Retrieve 3 most relevant past messages for this user
     memories = retrieve_relevant(user_id, body.message, n=3)
@@ -1380,7 +1388,7 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
         )
         reply = response.content[0].text
         save_chat_message("assistant", reply, user_id)
-        embed_and_store(user_id, reply, "assistant")
+        threading.Thread(target=embed_and_store, args=(user_id, reply, "assistant"), daemon=True).start()
         return CoachChatResponse(reply=reply)
     except Exception as e:
         print(f"[coach/chat error] {e}")
