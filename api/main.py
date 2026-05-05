@@ -485,6 +485,208 @@ def jobs_agent_analyze(job_id: int, user_id: int = Depends(get_user_id)):
 
 
 # ---------------------------------------------------------------------------
+# Agent Produce — "The Agent Acts" using Claude Tool Use
+#
+# Claude gets ONE prompt and TWO tools:
+#   - search_web        → calls Tavily; Claude decides the query
+#   - get_candidate_profile → returns the user's full resume + skills
+#
+# Claude decides when to call each tool. Once it has what it needs it writes:
+#   - A tailored resume summary (2-3 sentences) for the specific job
+#   - A 3-paragraph cover letter
+#
+# The tool_calls log captures every tool Claude chose to invoke so the
+# frontend can show the full decision trail.
+# ---------------------------------------------------------------------------
+
+@app.post("/jobs/{job_id}/agent-produce")
+def jobs_agent_produce(job_id: int, user_id: int = Depends(get_user_id)):
+    """
+    Agentic writing endpoint: Claude researches the company and reads the
+    candidate's profile — deciding on its own when to call each tool — then
+    produces a tailored resume summary and 3-paragraph cover letter.
+    """
+    import anthropic
+    import json
+    import re
+    from tavily import TavilyClient
+
+    job = get_job_by_id(job_id, user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    if not tavily_key:
+        raise HTTPException(status_code=500, detail="TAVILY_API_KEY not set.")
+
+    claude = anthropic.Anthropic()
+    tavily = TavilyClient(api_key=tavily_key)
+
+    tools = [
+        {
+            "name": "search_web",
+            "description": (
+                "Search the web for current information about a company or job. "
+                "Use this to find recent news, culture, values, growth stage, "
+                "tech stack, or anything that would help tailor a cover letter."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to look up on the web."
+                    }
+                },
+                "required": ["query"]
+            }
+        },
+        {
+            "name": "get_candidate_profile",
+            "description": (
+                "Returns the candidate's full resume: name, skills, work experience, "
+                "education, and raw resume text. Call this to understand who you are "
+                "writing for before drafting the summary or cover letter."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ]
+
+    initial_message = (
+        f"You are a senior career coach and professional writer. You have been asked to "
+        f"produce two deliverables for a job application:\n\n"
+        f"1. A tailored 2-3 sentence professional resume summary for the role.\n"
+        f"2. A compelling 3-paragraph cover letter, tailored to this company and role.\n\n"
+        f"Target role:\n"
+        f"  Title:    {job.title}\n"
+        f"  Company:  {job.company}\n"
+        f"  Location: {job.location or 'Not specified'}\n"
+        f"  Notes:    {job.notes or 'None provided'}\n\n"
+        f"Steps you must follow:\n"
+        f"  - Call get_candidate_profile to learn who the candidate is.\n"
+        f"  - Call search_web to research {job.company} — culture, values, recent news.\n"
+        f"  - Then write both deliverables, weaving the candidate's background into the "
+        f"company's specific context.\n\n"
+        f"Return your answer as a JSON object with exactly these keys:\n"
+        f'{{"resume_summary": "...", "cover_letter": "para1\\n\\npara2\\n\\npara3"}}'
+    )
+
+    messages = [{"role": "user", "content": initial_message}]
+    tool_calls_log: list = []
+
+    while True:
+        response = claude.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            tools=tools,
+            messages=messages,
+        )
+
+        if response.stop_reason == "end_turn":
+            final_text = next(
+                (block.text for block in response.content if hasattr(block, "text")),
+                "{}"
+            )
+            break
+
+        if response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": response.content})
+
+            tool_results = []
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+
+                if block.name == "search_web":
+                    query = block.input["query"]
+                    try:
+                        sr = tavily.search(query=query, search_depth="basic", max_results=4)
+                        raw = sr.get("results", [])
+                        snippets = "\n\n".join(
+                            f"[{r.get('title','')}]: {r.get('content','')}"
+                            for r in raw
+                        )
+                        results_count = len(raw)
+                    except Exception as e:
+                        snippets = f"Search failed: {e}"
+                        results_count = 0
+
+                    tool_calls_log.append({
+                        "tool": "search_web",
+                        "query": query,
+                        "results_count": results_count,
+                    })
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": snippets or "No results found.",
+                    })
+
+                elif block.name == "get_candidate_profile":
+                    profile = build_user_profile(user_id)
+                    if profile:
+                        profile_data = {
+                            "name": profile.resume.name,
+                            "skills": profile.all_skills,
+                            "experience": [
+                                {
+                                    "title": e.title,
+                                    "company": e.company,
+                                    "years": e.years,
+                                }
+                                for e in profile.resume.experience
+                            ],
+                            "education": [
+                                {
+                                    "degree": ed.degree,
+                                    "institution": ed.institution,
+                                    "year": ed.year,
+                                }
+                                for ed in profile.resume.education
+                            ],
+                            # Raw resume text gives Claude the richest signal for writing
+                            "raw_resume": profile.resume.raw_text[:4000],
+                        }
+                        content = json.dumps(profile_data)
+                    else:
+                        content = "No candidate profile found. The user has not uploaded a resume yet."
+
+                    tool_calls_log.append({
+                        "tool": "get_candidate_profile",
+                        "query": None,
+                        "results_count": None,
+                    })
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": content,
+                    })
+
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        final_text = "{}"
+        break
+
+    # Extract JSON from Claude's response — handles markdown code fences
+    try:
+        json_match = re.search(r'\{.*\}', final_text, re.DOTALL)
+        parsed = json.loads(json_match.group()) if json_match else {}
+    except Exception:
+        parsed = {}
+
+    return {
+        "resume_summary": parsed.get("resume_summary", ""),
+        "cover_letter": parsed.get("cover_letter", final_text),
+        "tool_calls": tool_calls_log,
+        "job_id": job_id,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Resume parsing
 # ---------------------------------------------------------------------------
 

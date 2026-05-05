@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { fetchJob, fetchAnalysis, analyzeJob, updateJob, deleteJob, fetchCompanyNews, agentAnalyzeJob, Job, JobAnalysis, CompanyNews, AgentAnalysis } from "@/lib/api";
+import { fetchJob, fetchAnalysis, analyzeJob, updateJob, deleteJob, fetchCompanyNews, agentAnalyzeJob, agentProduceJob, Job, JobAnalysis, CompanyNews, AgentAnalysis, AgentProduceResult, AgentToolCall } from "@/lib/api";
 import Header from "@/components/Header";
 import FitScore from "@/components/FitScore";
 import StatusBadge from "@/components/StatusBadge";
@@ -24,6 +24,9 @@ export default function JobDetailPage() {
   const [agentResult, setAgentResult] = useState<AgentAnalysis | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
+  const [produceResult, setProduceResult] = useState<AgentProduceResult | null>(null);
+  const [produceLoading, setProduceLoading] = useState(false);
+  const [produceError, setProduceError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -73,6 +76,19 @@ export default function JobDetailPage() {
       setAgentError(e instanceof Error ? e.message : "Agent analyze failed.");
     } finally {
       setAgentLoading(false);
+    }
+  };
+
+  const handleAgentProduce = async () => {
+    setProduceLoading(true);
+    setProduceError(null);
+    try {
+      const result = await agentProduceJob(jobId);
+      setProduceResult(result);
+    } catch (e) {
+      setProduceError(e instanceof Error ? e.message : "Agent write failed.");
+    } finally {
+      setProduceLoading(false);
     }
   };
 
@@ -253,6 +269,103 @@ export default function JobDetailPage() {
         {!agentResult && !agentLoading && !agentError && (
           <p className="text-xs text-ink-muted py-1">
             Click &quot;Run Agent&quot; — Claude will search the web on its own and return a contextual analysis.
+          </p>
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Agent Write — "The Agent Acts"                                     */}
+      {/* Claude calls get_candidate_profile + search_web on its own, then  */}
+      {/* produces a tailored resume summary and 3-paragraph cover letter.  */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="card p-5 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-ai-50 flex items-center justify-center shrink-0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-ink">Agent Write</p>
+              <p className="text-[11px] text-ink-muted">Resume summary + cover letter · tool-use</p>
+            </div>
+          </div>
+          {!produceLoading && (
+            <button onClick={handleAgentProduce} className="text-xs px-3 py-1.5 rounded-xl bg-ai-50 text-ai-500 hover:bg-ai-100 font-medium transition-colors">
+              {produceResult ? "Re-write" : "Write for Me"}
+            </button>
+          )}
+        </div>
+
+        {produceLoading && (
+          <div className="flex items-center gap-2 py-3">
+            <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
+            <p className="text-xs text-ink-muted">Claude is reading your profile and researching {job.company}…</p>
+          </div>
+        )}
+
+        {produceError && !produceLoading && (
+          <p className="text-xs text-rose-600 py-1">{produceError}</p>
+        )}
+
+        {produceResult && !produceLoading && (
+          <div className="space-y-5">
+            {/* Tool call trail */}
+            {produceResult.tool_calls.length > 0 && (
+              <div>
+                <p className="label mb-1.5">What Claude did</p>
+                <div className="space-y-1.5">
+                  {produceResult.tool_calls.map((tc: AgentToolCall, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs text-ink-secondary">
+                      {tc.tool === "get_candidate_profile" ? (
+                        <>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                          </svg>
+                          <span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">get_candidate_profile()</span>
+                          <span className="text-ink-muted">Read your resume</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                          </svg>
+                          <span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">{tc.query}</span>
+                          <span className="text-ink-muted">{tc.results_count} result{tc.results_count !== 1 ? "s" : ""}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Resume summary */}
+            {produceResult.resume_summary && (
+              <div>
+                <p className="label mb-1.5">Tailored Resume Summary</p>
+                <p className="text-sm text-ink-secondary leading-relaxed bg-base border border-border rounded-xl px-4 py-3">
+                  {produceResult.resume_summary}
+                </p>
+              </div>
+            )}
+
+            {/* Cover letter */}
+            {produceResult.cover_letter && (
+              <div>
+                <p className="label mb-1.5">Cover Letter</p>
+                <pre className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed bg-base border border-border rounded-xl px-4 py-4 font-sans">
+                  {produceResult.cover_letter}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!produceResult && !produceLoading && !produceError && (
+          <p className="text-xs text-ink-muted py-1">
+            Click &quot;Write for Me&quot; — Claude will read your resume and research {job.company}, then write a tailored summary and cover letter.
           </p>
         )}
       </div>

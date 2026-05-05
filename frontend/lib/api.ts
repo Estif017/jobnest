@@ -194,6 +194,22 @@ export interface AgentAnalysis {
 export const agentAnalyzeJob = (jobId: number): Promise<AgentAnalysis> =>
   apiFetch(`/jobs/${jobId}/agent-analyze`, { method: "POST" });
 
+export interface AgentToolCall {
+  tool: "search_web" | "get_candidate_profile";
+  query: string | null;
+  results_count: number | null;
+}
+
+export interface AgentProduceResult {
+  resume_summary: string;
+  cover_letter: string;
+  tool_calls: AgentToolCall[];
+  job_id: number;
+}
+
+export const agentProduceJob = (jobId: number): Promise<AgentProduceResult> =>
+  apiFetch(`/jobs/${jobId}/agent-produce`, { method: "POST" });
+
 // ---------------------------------------------------------------------------
 // Scrape
 // ---------------------------------------------------------------------------
