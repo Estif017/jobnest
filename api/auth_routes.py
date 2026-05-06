@@ -1,7 +1,7 @@
 """
 api/auth_routes.py — Authentication endpoints for JobNest.
 
-Handles registration, login, Google OAuth upsert, onboarding completion,
+Handles registration, login, Google/GitHub OAuth upsert, onboarding completion,
 and password change. All password hashing uses bcrypt — plain text is never
 stored. Mounted into the main FastAPI app under the /auth prefix.
 """
@@ -13,7 +13,7 @@ import bcrypt
 from fastapi import APIRouter, HTTPException
 
 from api.schemas import (
-    RegisterRequest, LoginRequest, GoogleAuthRequest,
+    RegisterRequest, LoginRequest, GoogleAuthRequest, GithubAuthRequest,
     AuthResponse, OnboardingCompleteRequest, ChangePasswordRequest,
 )
 from db_operations import (
@@ -22,7 +22,29 @@ from db_operations import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
+
+_SPECIAL = re.compile(r"[!@#$%^&*()\-_=+\[\]{}|;:',.<>?/`~\"\\]")
+
+
+def _validate_password_strength(password: str) -> None:
+    """Raises HTTPException 422 if password doesn't meet all strength criteria."""
+    missing = []
+    if len(password) < 8:
+        missing.append("at least 8 characters")
+    if not re.search(r"[A-Z]", password):
+        missing.append("an uppercase letter")
+    if not re.search(r"[a-z]", password):
+        missing.append("a lowercase letter")
+    if not re.search(r"[0-9]", password):
+        missing.append("a number")
+    if not _SPECIAL.search(password):
+        missing.append("a special character (!@#$%^&*...)")
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Password must include: {', '.join(missing)}.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -36,9 +58,9 @@ def register(body: RegisterRequest):
     Returns a success message — does NOT auto-login (frontend redirects to /login).
     """
     if not EMAIL_RE.match(body.email):
-        raise HTTPException(status_code=400, detail="Invalid email address.")
-    if len(body.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+        raise HTTPException(status_code=422, detail="Please enter a valid email address.")
+
+    _validate_password_strength(body.password)
 
     pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
 
@@ -91,12 +113,44 @@ def google_auth(body: GoogleAuthRequest):
     """
     Called by NextAuth's jwt() callback after a successful Google sign-in.
     Creates the user in our DB if they don't exist yet (upsert).
+    Returns onboarding_complete=False for new users so middleware sends them to /onboarding.
     """
     email = body.email.lower().strip()
     user = get_user_by_email(email)
 
     if user is None:
         user_id = create_user(email=email, password_hash=None, provider="google")
+        user = get_user_by_id(user_id)
+
+    return AuthResponse(
+        user_id=user["id"],
+        email=user["email"],
+        onboarding_complete=bool(user["onboarding_complete"]),
+        provider=user["provider"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# GitHub OAuth upsert
+# ---------------------------------------------------------------------------
+
+@router.post("/github", response_model=AuthResponse)
+def github_auth(body: GithubAuthRequest):
+    """
+    Called by NextAuth's jwt() callback after a successful GitHub sign-in.
+    Creates the user in our DB if they don't exist yet (upsert).
+    Returns onboarding_complete=False for new users so middleware sends them to /onboarding.
+    """
+    if not body.email:
+        raise HTTPException(
+            status_code=422,
+            detail="GitHub account has no public email. Please add one in GitHub settings.",
+        )
+    email = body.email.lower().strip()
+    user = get_user_by_email(email)
+
+    if user is None:
+        user_id = create_user(email=email, password_hash=None, provider="github")
         user = get_user_by_id(user_id)
 
     return AuthResponse(

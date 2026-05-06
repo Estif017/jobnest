@@ -2,6 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Auth page utilities
+   --------------------------------------------------------------------------- */
+
+@keyframes authFadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.auth-card-animate {
+  animation: authFadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.auth-bg {
+  background-color: #060b14;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -5%, rgba(59, 130, 246, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 85% 90%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='250' height='250'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='250' height='250' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  background-size: auto, auto, 250px 250px;
+}
+
+.auth-glass {
+  background: rgba(8, 11, 22, 0.78);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.auth-label {
+  @apply block text-xs font-medium text-[#64748b] uppercase tracking-wider mb-1.5;
+}
+
+.auth-input {
+  @apply w-full bg-[#0b0f1c] border border-[#1e2640] text-white text-sm rounded-xl px-4 py-3
+         placeholder:text-[#2d3a52]
+         focus:outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20
+         transition-all duration-200;
+}
+
+.auth-btn-primary {
+  @apply flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98]
+         text-white text-sm font-semibold py-3 rounded-xl
+         transition-all duration-200
+         disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
+         focus:outline-none focus:ring-2 focus:ring-blue-500/40;
+}
+
+.auth-btn-oauth {
+  @apply flex items-center justify-center gap-3 bg-[#0d1120] hover:bg-[#121929]
+         border border-[#1e2640] hover:border-[#2a3560]
+         text-white text-sm font-medium py-3 rounded-xl
+         transition-all duration-200 active:scale-[0.98]
+         focus:outline-none focus:ring-2 focus:ring-[#1e2640];
+}
+
 @layer base {
   :root {
     --bg-base:         #F8FAFB;

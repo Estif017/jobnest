@@ -93,6 +93,11 @@ class GoogleAuthRequest(BaseModel):
     email: str
 
 
+class GithubAuthRequest(BaseModel):
+    """Called by NextAuth after a successful GitHub sign-in to upsert the user."""
+    email: Optional[str] = None
+
+
 class AuthResponse(BaseModel):
     user_id:             int
     email:               str

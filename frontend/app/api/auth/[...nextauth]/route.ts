@@ -1,6 +1,7 @@
 import NextAuth, { DefaultSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
+import GitHubProvider from "next-auth/providers/github";
 
 // ---------------------------------------------------------------------------
 // Extend NextAuth types to carry userId and onboarding_complete
@@ -30,11 +31,13 @@ declare module "next-auth/jwt" {
 // Config
 // ---------------------------------------------------------------------------
 
-// Server-side only — not exposed to the browser
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const googleConfigured =
   !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
+
+const githubConfigured =
+  !!process.env.GITHUB_CLIENT_ID && !!process.env.GITHUB_CLIENT_SECRET;
 
 const handler = NextAuth({
   providers: [
@@ -70,7 +73,7 @@ const handler = NextAuth({
             onboarding_complete: user.onboarding_complete,
           };
         } catch {
-          return null;  // Backend unreachable
+          return null;
         }
       },
     }),
@@ -83,6 +86,18 @@ const handler = NextAuth({
           GoogleProvider({
             clientId:     process.env.GOOGLE_CLIENT_ID!,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+          }),
+        ]
+      : []),
+
+    // -----------------------------------------------------------------------
+    // GitHub — only registered when env vars are set
+    // -----------------------------------------------------------------------
+    ...(githubConfigured
+      ? [
+          GitHubProvider({
+            clientId:     process.env.GITHUB_CLIENT_ID!,
+            clientSecret: process.env.GITHUB_CLIENT_SECRET!,
           }),
         ]
       : []),
@@ -110,8 +125,26 @@ const handler = NextAuth({
             body:    JSON.stringify({ email: token.email }),
           });
           if (res.ok) {
-            const dbUser             = await res.json();
-            token.userId             = String(dbUser.user_id);
+            const dbUser              = await res.json();
+            token.userId              = String(dbUser.user_id);
+            token.onboarding_complete = dbUser.onboarding_complete;
+          }
+        } catch {
+          // Backend unavailable — session still works, onboarding will re-check
+        }
+      }
+
+      // GitHub: upsert in our DB on first sign-in
+      if (account?.provider === "github" && token.email) {
+        try {
+          const res = await fetch(`${API_URL}/auth/github`, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ email: token.email }),
+          });
+          if (res.ok) {
+            const dbUser              = await res.json();
+            token.userId              = String(dbUser.user_id);
             token.onboarding_complete = dbUser.onboarding_complete;
           }
         } catch {
