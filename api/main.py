@@ -606,8 +606,9 @@ def jobs_agent_analyze(job_id: int, user_id: int = Depends(get_user_id)):
     messages = [{"role": "user", "content": initial_message}]
     tool_calls_log: list = []
 
-    # Agentic loop — exits on end_turn or unexpected stop_reason
-    while True:
+    # Agentic loop — exits on end_turn, unexpected stop_reason, or iteration cap
+    MAX_ITERATIONS = 8
+    for _iteration in range(MAX_ITERATIONS):
         response = claude.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1000,
@@ -1033,7 +1034,7 @@ def jobs_full_hunt(job_id: int, user_id: int = Depends(get_user_id)):
     # ---------- Tool implementations (called by Claude's tool_use blocks) ----------
 
     def _tool_analyze_job() -> dict:
-        result = analyze_job(job, profile)
+        result = analyze_job(job, profile, user_id=user_id)
         return {
             "fit_score":      result.fit_score,
             "verdict":        result.verdict,
