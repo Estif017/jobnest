@@ -87,10 +87,11 @@ def login(body: LoginRequest):
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    if user["provider"] == "google":
+    if user["provider"] in ("google", "github"):
+        provider_label = user["provider"].title()
         raise HTTPException(
             status_code=400,
-            detail="This account uses Google sign-in. Use 'Continue with Google'.",
+            detail=f"This account uses {provider_label} sign-in. Please use 'Continue with {provider_label}'.",
         )
 
     if not bcrypt.checkpw(body.password.encode(), user["password_hash"].encode()):

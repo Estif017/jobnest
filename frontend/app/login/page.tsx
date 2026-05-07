@@ -1,24 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { getProviders, signIn } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DM_Sans } from "next/font/google";
 
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 
 const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
 
-export default function LoginPage() {
-  const router = useRouter();
+// Map NextAuth error codes to human-readable messages
+function oauthError(error: string | null): string {
+  switch (error) {
+    case "OAuthSignin":
+    case "OAuthCallback":
+      return "OAuth sign-in failed. Verify the callback URL is registered in your provider console.";
+    case "OAuthAccountNotLinked":
+      return "This email is already linked to a different sign-in method. Use your original method.";
+    case "Callback":
+    case "OAuthCreateAccount":
+      return "Sign-in failed. Please try again.";
+    default:
+      return "";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inner component — reads searchParams (requires Suspense boundary)
+// ---------------------------------------------------------------------------
+
+function LoginContent() {
+  const router      = useRouter();
+  const searchParams = useSearchParams();
+  const errorParam  = searchParams.get("error");
 
   const [email,        setEmail]        = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [password,     setPassword]     = useState("");
   const [pwTouched,    setPwTouched]    = useState(false);
-  const [error,        setError]        = useState("");
+  const [error,        setError]        = useState(oauthError(errorParam));
   const [loading,      setLoading]      = useState(false);
+  const [providers,    setProviders]    = useState<Record<string, { id: string }> | null>(null);
+
+  useEffect(() => {
+    getProviders().then((p) => setProviders((p as Record<string, { id: string }>) ?? {}));
+  }, []);
 
   const emailValid = EMAIL_RE.test(email);
   const emailError = emailTouched && email && !emailValid ? "Please enter a valid email" : "";
@@ -27,18 +54,12 @@ export default function LoginPage() {
   const handleLogin = async () => {
     setEmailTouched(true);
     setPwTouched(true);
-
     if (!emailValid || !password) return;
 
     setError("");
     setLoading(true);
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-
+    const result = await signIn("credentials", { email, password, redirect: false });
     setLoading(false);
 
     if (result?.error) {
@@ -51,6 +72,11 @@ export default function LoginPage() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleLogin();
   };
+
+  const googleEnabled = providers?.["google"] !== undefined;
+  const githubEnabled = providers?.["github"] !== undefined;
+  const anyOAuth      = googleEnabled || githubEnabled;
+  const providersLoaded = providers !== null;
 
   return (
     <div className={`auth-bg fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8 ${dmSans.className}`}>
@@ -115,34 +141,40 @@ export default function LoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </button>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#1e2640]" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-transparent px-3 text-[#334155]">or continue with</span>
-            </div>
-          </div>
+          {/* OAuth section — only shown once providers are loaded and at least one is available */}
+          {providersLoaded && anyOAuth && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-[#1e2640]" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-transparent px-3 text-[#334155]">or continue with</span>
+                </div>
+              </div>
 
-          {/* OAuth buttons */}
-          <div className="space-y-3">
-            <button
-              onClick={() => signIn("google", { callbackUrl: "/" })}
-              className="auth-btn-oauth w-full"
-            >
-              <GoogleIcon />
-              Continue with Google
-            </button>
-
-            <button
-              onClick={() => signIn("github", { callbackUrl: "/" })}
-              className="auth-btn-oauth w-full"
-            >
-              <GitHubIcon />
-              Continue with GitHub
-            </button>
-          </div>
+              <div className="space-y-3">
+                {googleEnabled && (
+                  <button
+                    onClick={() => signIn("google", { callbackUrl: "/" })}
+                    className="auth-btn-oauth w-full"
+                  >
+                    <GoogleIcon />
+                    Continue with Google
+                  </button>
+                )}
+                {githubEnabled && (
+                  <button
+                    onClick={() => signIn("github", { callbackUrl: "/" })}
+                    className="auth-btn-oauth w-full"
+                  >
+                    <GitHubIcon />
+                    Continue with GitHub
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
           <p className="text-center text-sm text-[#475569]">
             No account?{" "}
@@ -159,6 +191,18 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page export — Suspense required for useSearchParams in App Router
+// ---------------------------------------------------------------------------
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="auth-bg fixed inset-0 z-50" />}>
+      <LoginContent />
+    </Suspense>
   );
 }
 

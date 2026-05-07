@@ -1,17 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { getProviders, signIn } from "next-auth/react";
 import { DM_Sans } from "next/font/google";
 import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
 
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 
-const API       = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const EMAIL_RE  = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
-const SPECIAL   = /[!@#$%^&*()\-_=+\[\]{}|;:',.<>?/`~"\\]/;
+const API      = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+const SPECIAL  = /[!@#$%^&*()\-_=+\[\]{}|;:',.<>?/`~"\\]/;
 
 function criteriaScore(pw: string): number {
   return [
@@ -23,17 +23,26 @@ function criteriaScore(pw: string): number {
   ].filter(Boolean).length;
 }
 
-export default function SignupPage() {
+// ---------------------------------------------------------------------------
+// Inner component
+// ---------------------------------------------------------------------------
+
+function SignupContent() {
   const router = useRouter();
 
-  const [email,         setEmail]         = useState("");
-  const [emailTouched,  setEmailTouched]  = useState(false);
-  const [password,      setPassword]      = useState("");
-  const [confirm,       setConfirm]       = useState("");
-  const [confirmTouched,setConfirmTouched]= useState(false);
-  const [error,         setError]         = useState("");
-  const [success,       setSuccess]       = useState(false);
-  const [loading,       setLoading]       = useState(false);
+  const [email,          setEmail]          = useState("");
+  const [emailTouched,   setEmailTouched]   = useState(false);
+  const [password,       setPassword]       = useState("");
+  const [confirm,        setConfirm]        = useState("");
+  const [confirmTouched, setConfirmTouched] = useState(false);
+  const [error,          setError]          = useState("");
+  const [success,        setSuccess]        = useState(false);
+  const [loading,        setLoading]        = useState(false);
+  const [providers,      setProviders]      = useState<Record<string, { id: string }> | null>(null);
+
+  useEffect(() => {
+    getProviders().then((p) => setProviders((p as Record<string, { id: string }>) ?? {}));
+  }, []);
 
   const emailValid   = EMAIL_RE.test(email);
   const pwScore      = criteriaScore(password);
@@ -43,6 +52,11 @@ export default function SignupPage() {
 
   const emailError   = emailTouched && email && !emailValid ? "Enter a valid email" : "";
   const confirmError = confirmTouched && confirm && !confirmValid ? "Passwords don't match" : "";
+
+  const googleEnabled   = providers?.["google"] !== undefined;
+  const githubEnabled   = providers?.["github"] !== undefined;
+  const anyOAuth        = googleEnabled || githubEnabled;
+  const providersLoaded = providers !== null;
 
   const handleSignup = async () => {
     setError("");
@@ -160,34 +174,40 @@ export default function SignupPage() {
             {loading ? "Creating account…" : "Create Account"}
           </button>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#1e2640]" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-transparent px-3 text-[#334155]">or continue with</span>
-            </div>
-          </div>
+          {/* OAuth section — only shown when at least one provider is configured */}
+          {providersLoaded && anyOAuth && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-[#1e2640]" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-transparent px-3 text-[#334155]">or continue with</span>
+                </div>
+              </div>
 
-          {/* OAuth buttons */}
-          <div className="space-y-3">
-            <button
-              onClick={() => signIn("google", { callbackUrl: "/" })}
-              className="auth-btn-oauth w-full"
-            >
-              <GoogleIcon />
-              Continue with Google
-            </button>
-
-            <button
-              onClick={() => signIn("github", { callbackUrl: "/" })}
-              className="auth-btn-oauth w-full"
-            >
-              <GitHubIcon />
-              Continue with GitHub
-            </button>
-          </div>
+              <div className="space-y-3">
+                {googleEnabled && (
+                  <button
+                    onClick={() => signIn("google", { callbackUrl: "/" })}
+                    className="auth-btn-oauth w-full"
+                  >
+                    <GoogleIcon />
+                    Continue with Google
+                  </button>
+                )}
+                {githubEnabled && (
+                  <button
+                    onClick={() => signIn("github", { callbackUrl: "/" })}
+                    className="auth-btn-oauth w-full"
+                  >
+                    <GitHubIcon />
+                    Continue with GitHub
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
           <p className="text-center text-sm text-[#475569]">
             Already have an account?{" "}
@@ -204,6 +224,18 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page export
+// ---------------------------------------------------------------------------
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="auth-bg fixed inset-0 z-50" />}>
+      <SignupContent />
+    </Suspense>
   );
 }
 
