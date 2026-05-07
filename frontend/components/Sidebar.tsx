@@ -72,10 +72,15 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+const AUTH_PATHS = new Set(["/login", "/signup"]);
+
 export default function Sidebar() {
   const pathname  = usePathname();
   const router    = useRouter();
   const { data: session } = useSession();
+
+  const userId   = session?.user?.userId;
+  const isAuth   = AUTH_PATHS.has(pathname);
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount]     = useState(0);
@@ -85,19 +90,17 @@ export default function Sidebar() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
 
   const loadSessions = useCallback(() => {
+    if (!userId || isAuth) return;
     fetchCoachSessions().then(setChatSessions).catch(() => {});
-  }, []);
+  }, [userId, isAuth]);
 
   useEffect(() => {
     loadSessions();
-  }, [loadSessions, pathname]);  // reload when navigating (new session was created)
+  }, [loadSessions, pathname]);
 
-  const initials = session?.user?.email
-    ? session.user.email.slice(0, 2).toUpperCase()
-    : "JN";
-
-  // Load notifications and poll every 30 s
+  // Poll notifications only when authenticated and not on auth pages
   useEffect(() => {
+    if (!userId || isAuth) return;
     const load = () => {
       fetchNotifications()
         .then(({ notifications: items, unread_count }) => {
@@ -109,7 +112,14 @@ export default function Sidebar() {
     load();
     const id = setInterval(load, 30_000);
     return () => clearInterval(id);
-  }, []);
+  }, [userId, isAuth]);
+
+  // Don't render on auth pages
+  if (isAuth) return null;
+
+  const initials = session?.user?.email
+    ? session.user.email.slice(0, 2).toUpperCase()
+    : "JN";
 
   // Close panel when clicking outside
   useEffect(() => {
