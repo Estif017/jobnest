@@ -31,7 +31,15 @@ declare module "next-auth/jwt" {
 // Config
 // ---------------------------------------------------------------------------
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Prefer API_URL (127.0.0.1) over NEXT_PUBLIC_API_URL (localhost) for
+// server-side fetches — Node.js 18+ resolves "localhost" to ::1 (IPv6) but
+// uvicorn binds to 127.0.0.1 (IPv4), causing silent hangs on Windows.
+const API_URL =
+  process.env.API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://127.0.0.1:8000";
+
+const FETCH_TIMEOUT = 5000; // ms — fail fast instead of hanging forever
 
 const googleConfigured =
   !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
@@ -61,6 +69,7 @@ const handler = NextAuth({
               email:    credentials.email,
               password: credentials.password,
             }),
+            signal: AbortSignal.timeout(FETCH_TIMEOUT),
           });
 
           if (!res.ok) return null;
@@ -123,6 +132,7 @@ const handler = NextAuth({
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ email: token.email }),
+            signal:  AbortSignal.timeout(FETCH_TIMEOUT),
           });
           if (res.ok) {
             const dbUser              = await res.json();
@@ -141,6 +151,7 @@ const handler = NextAuth({
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ email: token.email }),
+            signal:  AbortSignal.timeout(FETCH_TIMEOUT),
           });
           if (res.ok) {
             const dbUser              = await res.json();
