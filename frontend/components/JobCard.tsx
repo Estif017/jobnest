@@ -7,45 +7,84 @@ interface JobCardProps {
   onSave?: (job: ScoredJob) => void;
 }
 
-const verdictStyle: Record<string, string> = {
-  APPLY:      "text-emerald-700 bg-emerald-50 border-emerald-200",
-  SKIP:       "text-amber-700 bg-amber-50 border-amber-200",
-  "RED FLAG": "text-rose-700 bg-rose-50 border-rose-200",
+const verdictColor: Record<string, { bg: string; color: string }> = {
+  APPLY:      { bg: "rgba(52,211,153,0.12)",  color: "#34D399" },
+  SKIP:       { bg: "rgba(251,191,36,0.12)",  color: "#FBBF24" },
+  "RED FLAG": { bg: "rgba(248,113,113,0.12)", color: "#F87171" },
 };
 
 export default function JobCard({ job, onSave }: JobCardProps) {
   const hasVerdict = job.verdict && job.verdict !== "PENDING";
-  const style = verdictStyle[job.verdict] ?? "text-ink-secondary bg-elevated border-border";
+  const vs = verdictColor[job.verdict] ?? null;
+  const isUnscored = !hasVerdict;
 
   return (
-    <div className="card p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
+    <div
+      className="flex flex-col gap-4 p-5 transition-all duration-200"
+      style={{
+        background: "var(--bg-surface)",
+        border: "1px solid var(--bg-border)",
+        borderRadius: "var(--radius-lg)",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--accent)";
+        (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 20px var(--accent-glow)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--bg-border)";
+        (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
+      }}
+    >
+      {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-ink text-sm leading-snug truncate">{job.job.title}</p>
-          <p className="text-ink-muted text-xs mt-0.5 truncate">{job.job.company}</p>
+          <p className="font-semibold text-sm leading-snug truncate" style={{ color: "var(--text-primary)" }}>
+            {job.job.title}
+          </p>
+          <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-secondary)" }}>
+            {job.job.company}
+          </p>
         </div>
         <FitScore score={job.fit_score || null} />
       </div>
 
-      {hasVerdict ? (
-        <span className={`self-start px-2.5 py-0.5 rounded-full text-xs font-medium border ${style}`}>
+      {/* Verdict / unscored badge */}
+      {hasVerdict && vs ? (
+        <span
+          className="self-start px-2.5 py-0.5 rounded-full text-xs font-semibold"
+          style={{ background: vs.bg, color: vs.color }}
+        >
           {job.verdict}
         </span>
-      ) : (
-        <span className="self-start px-2.5 py-0.5 rounded-full text-xs font-medium border text-ink-muted bg-elevated border-border">
-          Not scored
+      ) : isUnscored ? (
+        <span
+          className="self-start px-2.5 py-0.5 rounded-full text-xs font-medium shimmer-card"
+          style={{
+            border: "1px dashed var(--text-muted)",
+            color: "var(--text-muted)",
+            background: "transparent",
+          }}
+        >
+          Unanalyzed
         </span>
-      )}
+      ) : null}
 
+      {/* Actions */}
       <div className="flex gap-2 mt-auto pt-1">
         {onSave && (
           <button onClick={() => onSave(job)} className="btn-primary text-xs py-1.5 px-3">
             Save
           </button>
         )}
-        {/* Use job.job.id — job.id is the ScoredJob wrapper id (0 when unscored) */}
-        <Link href={`/jobs/${job.job.id}`} className="btn-ghost text-xs py-1.5 px-3">
+        <Link
+          href={`/jobs/${job.job.id}`}
+          className="inline-flex items-center gap-1 text-xs py-1.5 px-3 rounded-lg font-medium transition-colors"
+          style={{ color: "var(--accent)" }}
+        >
           View Detail
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+          </svg>
         </Link>
       </div>
     </div>

@@ -10,44 +10,44 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Base surfaces
-        base: "#F8FAFB",
-        surface: "#FFFFFF",
-        elevated: "#F1F5F9",
+        // Dark navy base surfaces
+        base:    "#0A0E1A",
+        surface: "#111827",
+        elevated:"#1A2235",
 
         // Primary accent — teal
         accent: {
-          DEFAULT: "#0D9488",
-          50:  "#F0FDFA",
-          100: "#CCFBF1",
-          200: "#99F6E4",
+          DEFAULT: "#2DD4BF",
+          50:  "#0C1F28",
+          100: "#0F2A35",
+          200: "#1E3D3A",
           400: "#2DD4BF",
-          500: "#14B8A6",
-          600: "#0D9488",
+          500: "#2DD4BF",
+          600: "#2DD4BF",
           700: "#0F766E",
         },
 
         // AI / coach secondary accent — indigo
         ai: {
-          DEFAULT: "#6366F1",
-          50:  "#EEF2FF",
-          100: "#E0E7FF",
-          500: "#6366F1",
-          600: "#4F46E5",
+          DEFAULT: "#818CF8",
+          50:  "#1A1B3D",
+          100: "#1E1F45",
+          500: "#818CF8",
+          600: "#6366F1",
         },
 
         // Semantic borders
         border: {
-          DEFAULT: "#E2E8F0",
-          subtle: "#F1F5F9",
+          DEFAULT: "#1E2D45",
+          subtle: "#111827",
         },
 
-        // Text scale
+        // Text scale — inverted for dark bg
         ink: {
-          DEFAULT: "#0F172A",
-          secondary: "#475569",
-          muted: "#94A3B8",
-          disabled: "#CBD5E1",
+          DEFAULT:   "#F1F5F9",
+          secondary: "#94A3B8",
+          muted:     "#475569",
+          disabled:  "#334155",
         },
       },
       borderRadius: {
@@ -55,13 +55,15 @@ const config: Config = {
         "3xl": "1.5rem",
       },
       boxShadow: {
-        card:  "0 1px 4px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04)",
-        md:    "0 4px 16px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.04)",
-        lg:    "0 8px 32px rgba(15,23,42,0.10), 0 4px 10px rgba(15,23,42,0.04)",
-        focus: "0 0 0 3px rgba(13,148,136,0.20)",
+        card:  "0 1px 4px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)",
+        md:    "0 4px 16px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3)",
+        lg:    "0 8px 32px rgba(0,0,0,0.6), 0 4px 10px rgba(0,0,0,0.3)",
+        focus: "0 0 0 3px rgba(45,212,191,0.20)",
+        glow:  "0 4px 20px rgba(45,212,191,0.18)",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans:    ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        heading: ["var(--font-space)", "var(--font-inter)", "ui-sans-serif", "sans-serif"],
       },
     },
   },

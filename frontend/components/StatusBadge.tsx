@@ -2,18 +2,21 @@ interface StatusBadgeProps {
   status: string;
 }
 
-const statusStyles: Record<string, string> = {
-  Saved:        "bg-slate-100 text-slate-600",
-  Applied:      "bg-blue-50 text-blue-700",
-  Interviewing: "bg-accent-50 text-accent-700",
-  Rejected:     "bg-rose-50 text-rose-700",
-  Offer:        "bg-emerald-50 text-emerald-700",
+const statusStyles: Record<string, { bg: string; color: string }> = {
+  Saved:        { bg: "rgba(100,116,139,0.15)", color: "#94A3B8" },
+  Applied:      { bg: "rgba(96,165,250,0.12)",  color: "#60A5FA" },
+  Interviewing: { bg: "rgba(251,191,36,0.12)",  color: "#FBBF24" },
+  Rejected:     { bg: "rgba(248,113,113,0.12)", color: "#F87171" },
+  Offer:        { bg: "rgba(52,211,153,0.12)",  color: "#34D399"  },
 };
 
 export default function StatusBadge({ status }: StatusBadgeProps) {
-  const style = statusStyles[status] ?? "bg-slate-100 text-slate-600";
+  const s = statusStyles[status] ?? statusStyles["Saved"];
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style}`}>
+    <span
+      style={{ background: s.bg, color: s.color }}
+      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
+    >
       {status}
     </span>
   );

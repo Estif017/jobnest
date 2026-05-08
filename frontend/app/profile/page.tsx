@@ -27,11 +27,24 @@ function PillButton({ active, onClick, children }: { active: boolean; onClick: (
   return (
     <button
       onClick={onClick}
-      className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+      className="text-xs px-3 py-1.5 rounded-full font-medium transition-colors"
+      style={
         active
-          ? "bg-accent-600 border-accent-600 text-white"
-          : "border-border text-ink-secondary hover:border-accent-300 hover:text-accent-700 hover:bg-accent-50"
-      }`}
+          ? { background: "var(--accent)", border: "1px solid var(--accent)", color: "#050C10" }
+          : { border: "1px solid var(--bg-border)", color: "var(--text-secondary)", background: "transparent" }
+      }
+      onMouseEnter={e => {
+        if (!active) {
+          (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
+          (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+        }
+      }}
+      onMouseLeave={e => {
+        if (!active) {
+          (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--bg-border)";
+          (e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)";
+        }
+      }}
     >
       {children}
     </button>
@@ -54,8 +67,11 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="card p-6 space-y-4">
-      <h2 className="text-sm font-semibold text-ink">{title}</h2>
+    <div
+      className="p-6 rounded-2xl space-y-4"
+      style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}
+    >
+      <h2 className="font-semibold font-heading" style={{ color: "var(--text-primary)", fontSize: "16px" }}>{title}</h2>
       {children}
       <button
         onClick={onSave}
@@ -129,7 +145,6 @@ export default function ProfilePage() {
     try {
       const result = await uploadResume(file);
       setResumeMsg(`Resume parsed — ${result.skills.length} skills extracted.`);
-      // Refresh onboarding data so the skills panel updates
       fetchOnboardingData().then(setData).catch(() => {});
     } catch (err: unknown) {
       setResumeMsg(err instanceof Error ? err.message : "Upload failed.");
@@ -178,7 +193,8 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-5 h-5 border-2 border-border border-t-accent-600 rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 rounded-full animate-spin"
+          style={{ borderColor: "var(--bg-border)", borderTopColor: "var(--accent)" }} />
       </div>
     );
   }
@@ -186,7 +202,7 @@ export default function ProfilePage() {
   if (!data) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-rose-600 text-sm">{error || "No profile data found."}</p>
+        <p className="text-sm" style={{ color: "var(--red)" }}>{error || "No profile data found."}</p>
       </div>
     );
   }
@@ -197,65 +213,75 @@ export default function ProfilePage() {
   return (
     <div className="max-w-2xl space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-ink tracking-tight">Profile</h1>
-        <p className="text-sm text-ink-secondary mt-0.5">Manage your career preferences and account settings.</p>
+        <h1 className="text-2xl font-bold font-heading tracking-tight" style={{ color: "var(--text-primary)" }}>Profile</h1>
+        <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>Manage your career preferences and account settings.</p>
       </div>
 
       {error && (
-        <p className="text-rose-600 text-sm bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5">{error}</p>
+        <p
+          className="text-sm px-4 py-2.5 rounded-xl"
+          style={{ color: "var(--red)", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.15)" }}
+        >
+          {error}
+        </p>
       )}
 
       {/* Account */}
-      <div className="card p-6 space-y-3">
-        <h2 className="text-sm font-semibold text-ink">Account</h2>
-        <div className="flex items-center justify-between py-1 border-b border-border">
-          <span className="text-xs text-ink-muted">Email</span>
-          <span className="text-sm text-ink">{session?.user?.email ?? "—"}</span>
+      <div className="p-6 rounded-2xl space-y-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
+        <h2 className="font-semibold font-heading" style={{ color: "var(--text-primary)", fontSize: "16px" }}>Account</h2>
+        <div className="flex items-center justify-between py-1" style={{ borderBottom: "1px solid var(--bg-border)" }}>
+          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Email</span>
+          <span className="text-sm" style={{ color: "var(--text-primary)" }}>{session?.user?.email ?? "—"}</span>
         </div>
         <div className="flex items-center justify-between py-1">
-          <span className="text-xs text-ink-muted">Sign-in method</span>
-          <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-            isEmailProvider
-              ? "bg-accent-50 text-accent-700"
-              : "bg-emerald-50 text-emerald-700"
-          }`}>
+          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Sign-in method</span>
+          <span
+            className="text-xs px-2.5 py-0.5 rounded-full font-medium"
+            style={
+              isEmailProvider
+                ? { background: "rgba(45,212,191,0.1)", color: "var(--accent)" }
+                : { background: "rgba(52,211,153,0.1)", color: "var(--green)" }
+            }
+          >
             {isEmailProvider ? "Email" : "Google"}
           </span>
         </div>
         {data.name && (
           <div className="flex items-center justify-between py-1">
-            <span className="text-xs text-ink-muted">Name (from resume)</span>
-            <span className="text-sm text-ink">{data.name}</span>
+            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Name (from resume)</span>
+            <span className="text-sm" style={{ color: "var(--text-primary)" }}>{data.name}</span>
           </div>
         )}
 
-        <div className="pt-2 border-t border-border">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf"
-            className="hidden"
-            onChange={handleResumeUpload}
-          />
+        <div className="pt-2" style={{ borderTop: "1px solid var(--bg-border)" }}>
+          <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handleResumeUpload} />
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-ink">Resume</p>
-              <p className="text-xs text-ink-muted mt-0.5">PDF · updates your skills and name</p>
+              <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Resume</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>PDF · updates your skills and name</p>
             </div>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={resumeUploading}
-              className="btn-ghost text-xs py-1.5 px-3"
+              className="text-xs py-1.5 px-3 rounded-lg transition-colors font-medium"
+              style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)", color: "var(--text-primary)" }}
+              onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"}
+              onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--bg-border)"}
             >
               {resumeUploading ? "Parsing…" : "Upload PDF"}
             </button>
           </div>
           {resumeMsg && (
-            <p className={`text-xs mt-2 px-3 py-1.5 rounded-lg border ${
-              resumeMsg.includes("parsed")
-                ? "text-emerald-700 bg-emerald-50 border-emerald-100"
-                : "text-rose-600 bg-rose-50 border-rose-100"
-            }`}>{resumeMsg}</p>
+            <p
+              className="text-xs mt-2 px-3 py-1.5 rounded-lg"
+              style={
+                resumeMsg.includes("parsed")
+                  ? { color: "var(--green)", background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.15)" }
+                  : { color: "var(--red)", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.15)" }
+              }
+            >
+              {resumeMsg}
+            </p>
           )}
         </div>
       </div>
@@ -268,8 +294,8 @@ export default function ProfilePage() {
           portfolio_url:   data.portfolio_url,
         })}>
         {[
-          { label: "LinkedIn URL",    key: "linkedin_url"    as const, placeholder: "https://linkedin.com/in/..." },
-          { label: "Portfolio URL",   key: "portfolio_url"   as const, placeholder: "https://yoursite.com" },
+          { label: "LinkedIn URL",  key: "linkedin_url"  as const, placeholder: "https://linkedin.com/in/..." },
+          { label: "Portfolio URL", key: "portfolio_url" as const, placeholder: "https://yoursite.com" },
         ].map(({ label, key, placeholder }) => (
           <div key={key}>
             <label className="label">{label}</label>
@@ -296,38 +322,56 @@ export default function ProfilePage() {
             <button
               onClick={handleSyncGitHub}
               disabled={githubLoading}
-              className="btn-ghost text-xs py-2 px-3 shrink-0"
+              className="text-xs py-2 px-3 shrink-0 rounded-lg transition-colors font-medium"
+              style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)", color: "var(--text-primary)" }}
+              onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"}
+              onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--bg-border)"}
             >
               {githubLoading ? "Syncing…" : "Sync"}
             </button>
           </div>
           {githubMsg && (
-            <p className={`text-xs mt-1.5 ${githubMsg.includes("synced") ? "text-emerald-600" : "text-rose-500"}`}>
+            <p className="text-xs mt-1.5" style={{ color: githubMsg.includes("synced") ? "var(--green)" : "var(--red)" }}>
               {githubMsg}
             </p>
           )}
           {github && (
-            <div className="mt-3 p-3 rounded-xl bg-elevated border border-border space-y-2.5">
+            <div
+              className="mt-3 p-3 rounded-xl space-y-2.5"
+              style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}
+            >
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-ink">@{github.username}</p>
-                <span className="text-[10px] text-ink-muted">{github.repos.length} repos indexed</span>
+                <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>@{github.username}</p>
+                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{github.repos.length} repos indexed</span>
               </div>
               {github.top_skills.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-ink-muted uppercase tracking-wide mb-1.5">Top Skills</p>
+                  <p className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>Top Skills</p>
                   <div className="flex flex-wrap gap-1">
                     {github.top_skills.map((s) => (
-                      <span key={s} className="text-[10px] px-2 py-0.5 bg-ai-50 border border-ai-100 text-ai-700 rounded-full">{s}</span>
+                      <span
+                        key={s}
+                        className="text-[10px] px-2 py-0.5 rounded-full"
+                        style={{ background: "rgba(45,212,191,0.1)", border: "1px solid rgba(45,212,191,0.2)", color: "var(--accent)" }}
+                      >
+                        {s}
+                      </span>
                     ))}
                   </div>
                 </div>
               )}
               {github.languages.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-ink-muted uppercase tracking-wide mb-1.5">Languages</p>
+                  <p className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>Languages</p>
                   <div className="flex flex-wrap gap-1">
                     {github.languages.map((l) => (
-                      <span key={l} className="text-[10px] px-2 py-0.5 bg-elevated border border-border text-ink-secondary rounded-full">{l}</span>
+                      <span
+                        key={l}
+                        className="text-[10px] px-2 py-0.5 rounded-full"
+                        style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)", color: "var(--text-secondary)" }}
+                      >
+                        {l}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -351,7 +395,10 @@ export default function ProfilePage() {
           <label className="label flex items-center gap-2">
             Target Job Title
             {!data.target_role && (
-              <span className="text-amber-600 text-[10px] font-medium bg-amber-50 px-1.5 py-0.5 rounded-full">
+              <span
+                className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                style={{ color: "var(--yellow)", background: "rgba(251,191,36,0.1)" }}
+              >
                 Used by the AI hunter — fill this in
               </span>
             )}
@@ -412,21 +459,19 @@ export default function ProfilePage() {
         <div>
           <label className="label flex items-center justify-between">
             <span>Job Alert Threshold</span>
-            <span className="text-accent-600 font-semibold">{data.alert_threshold ?? 7}/10</span>
+            <span className="font-semibold" style={{ color: "var(--accent)" }}>{data.alert_threshold ?? 7}/10</span>
           </label>
-          <p className="text-xs text-ink-muted mb-2">
+          <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
             AI hunter only alerts you when a job scores at or above this fit score.
           </p>
           <input
             type="range"
-            min={1}
-            max={10}
-            step={1}
+            min={1} max={10} step={1}
             value={data.alert_threshold ?? 7}
             onChange={(e) => set("alert_threshold", Number(e.target.value))}
-            className="w-full accent-accent-600"
+            className="w-full accent-teal-400"
           />
-          <div className="flex justify-between text-[10px] text-ink-muted mt-1">
+          <div className="flex justify-between text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
             <span>1 — alert on everything</span>
             <span>10 — only perfect matches</span>
           </div>
@@ -454,16 +499,16 @@ export default function ProfilePage() {
         </div>
 
         <div className="flex items-center justify-between py-1">
-          <span className="text-sm text-ink-secondary">Open to relocation</span>
+          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Open to relocation</span>
           <button
             onClick={() => set("open_to_relocation", !data.open_to_relocation)}
-            className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
-              data.open_to_relocation ? "bg-accent-600" : "bg-border"
-            }`}
+            className="w-11 h-6 rounded-full transition-colors relative shrink-0"
+            style={{ background: data.open_to_relocation ? "var(--accent)" : "var(--bg-border)" }}
           >
-            <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
-              data.open_to_relocation ? "translate-x-6" : "translate-x-1"
-            }`} />
+            <span
+              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform"
+              style={{ transform: data.open_to_relocation ? "translateX(22px)" : "translateX(4px)" }}
+            />
           </button>
         </div>
 
@@ -521,7 +566,7 @@ export default function ProfilePage() {
 
         <div>
           <label className="label">
-            Certifications <span className="text-ink-muted font-normal normal-case">(optional)</span>
+            Certifications <span className="font-normal normal-case" style={{ color: "var(--text-muted)" }}>(optional)</span>
           </label>
           <textarea
             rows={3}
@@ -537,7 +582,11 @@ export default function ProfilePage() {
             <label className="label mb-2">Skills from Resume</label>
             <div className="flex flex-wrap gap-1.5">
               {data.skills.map((s) => (
-                <span key={s} className="text-xs px-2.5 py-0.5 bg-elevated border border-border text-ink-secondary rounded-full">
+                <span
+                  key={s}
+                  className="text-xs px-2.5 py-0.5 rounded-full"
+                  style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)", color: "var(--text-secondary)" }}
+                >
                   {s}
                 </span>
               ))}
@@ -548,15 +597,18 @@ export default function ProfilePage() {
 
       {/* Change Password */}
       {isEmailProvider && (
-        <div className="card p-6 space-y-4">
-          <h2 className="text-sm font-semibold text-ink">Change Password</h2>
+        <div className="p-6 rounded-2xl space-y-4" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
+          <h2 className="font-semibold font-heading" style={{ color: "var(--text-primary)", fontSize: "16px" }}>Change Password</h2>
 
           {pwMsg && (
-            <p className={`text-sm px-3 py-2 rounded-xl border ${
-              pwMsg.toLowerCase().includes("updated")
-                ? "text-emerald-700 bg-emerald-50 border-emerald-100"
-                : "text-rose-600 bg-rose-50 border-rose-100"
-            }`}>
+            <p
+              className="text-sm px-3 py-2 rounded-xl"
+              style={
+                pwMsg.toLowerCase().includes("updated")
+                  ? { color: "var(--green)", background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.15)" }
+                  : { color: "var(--red)", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.15)" }
+              }
+            >
               {pwMsg}
             </p>
           )}
@@ -578,11 +630,7 @@ export default function ProfilePage() {
             </div>
           ))}
 
-          <button
-            onClick={handleChangePassword}
-            disabled={pwLoading}
-            className="btn-primary text-xs py-1.5 px-4"
-          >
+          <button onClick={handleChangePassword} disabled={pwLoading} className="btn-primary text-xs py-1.5 px-4">
             {pwLoading ? "Updating…" : "Update Password"}
           </button>
         </div>
