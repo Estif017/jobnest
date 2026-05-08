@@ -71,7 +71,7 @@ function Section({
       className="p-6 rounded-2xl space-y-4"
       style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}
     >
-      <h2 className="text-sm font-semibold font-heading" style={{ color: "var(--text-primary)" }}>{title}</h2>
+      <h2 className="font-semibold font-heading" style={{ color: "var(--text-primary)", fontSize: "16px" }}>{title}</h2>
       {children}
       <button
         onClick={onSave}
@@ -228,13 +228,13 @@ export default function ProfilePage() {
 
       {/* Account */}
       <div className="p-6 rounded-2xl space-y-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
-        <h2 className="text-sm font-semibold font-heading" style={{ color: "var(--text-primary)" }}>Account</h2>
+        <h2 className="font-semibold font-heading" style={{ color: "var(--text-primary)", fontSize: "16px" }}>Account</h2>
         <div className="flex items-center justify-between py-1" style={{ borderBottom: "1px solid var(--bg-border)" }}>
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>Email</span>
+          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Email</span>
           <span className="text-sm" style={{ color: "var(--text-primary)" }}>{session?.user?.email ?? "—"}</span>
         </div>
         <div className="flex items-center justify-between py-1">
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>Sign-in method</span>
+          <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Sign-in method</span>
           <span
             className="text-xs px-2.5 py-0.5 rounded-full font-medium"
             style={
@@ -248,7 +248,7 @@ export default function ProfilePage() {
         </div>
         {data.name && (
           <div className="flex items-center justify-between py-1">
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>Name (from resume)</span>
+            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>Name (from resume)</span>
             <span className="text-sm" style={{ color: "var(--text-primary)" }}>{data.name}</span>
           </div>
         )}
@@ -257,13 +257,16 @@ export default function ProfilePage() {
           <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handleResumeUpload} />
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>Resume</p>
+              <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>Resume</p>
               <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>PDF · updates your skills and name</p>
             </div>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={resumeUploading}
-              className="btn-ghost text-xs py-1.5 px-3"
+              className="text-xs py-1.5 px-3 rounded-lg transition-colors font-medium"
+              style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)", color: "var(--text-primary)" }}
+              onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"}
+              onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--bg-border)"}
             >
               {resumeUploading ? "Parsing…" : "Upload PDF"}
             </button>
@@ -319,7 +322,10 @@ export default function ProfilePage() {
             <button
               onClick={handleSyncGitHub}
               disabled={githubLoading}
-              className="btn-ghost text-xs py-2 px-3 shrink-0"
+              className="text-xs py-2 px-3 shrink-0 rounded-lg transition-colors font-medium"
+              style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)", color: "var(--text-primary)" }}
+              onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"}
+              onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--bg-border)"}
             >
               {githubLoading ? "Syncing…" : "Sync"}
             </button>
@@ -592,7 +598,7 @@ export default function ProfilePage() {
       {/* Change Password */}
       {isEmailProvider && (
         <div className="p-6 rounded-2xl space-y-4" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
-          <h2 className="text-sm font-semibold font-heading" style={{ color: "var(--text-primary)" }}>Change Password</h2>
+          <h2 className="font-semibold font-heading" style={{ color: "var(--text-primary)", fontSize: "16px" }}>Change Password</h2>
 
           {pwMsg && (
             <p

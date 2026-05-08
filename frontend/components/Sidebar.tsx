@@ -160,33 +160,42 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-60 bg-surface border-r border-border flex flex-col z-20 shadow-card">
+    <aside
+      className="fixed left-0 top-0 h-screen w-60 flex flex-col z-20"
+      style={{ background: "var(--bg-surface)", borderRight: "1px solid var(--bg-border)" }}
+    >
       {/* Logo */}
-      <div className="px-5 py-5 flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-accent-600 flex items-center justify-center shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-              </svg>
-            </div>
-            <span className="font-bold text-lg tracking-tight text-ink">JobNest</span>
+      <div className="px-5 pt-5 pb-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: "var(--accent)" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#050C10" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
           </div>
-          <p className="text-xs text-ink-muted mt-1 ml-10.5 pl-0.5">Career Copilot</p>
+          <div>
+            <span className="font-bold text-base tracking-tight font-heading" style={{ color: "var(--text-primary)" }}>JobNest</span>
+            <p className="text-[11px] leading-none mt-0.5" style={{ color: "var(--text-muted)" }}>Career Copilot</p>
+          </div>
         </div>
 
-        {/* Bell button */}
+        {/* Bell */}
         <button
           onClick={() => setPanelOpen(o => !o)}
-          className="relative mt-1 w-8 h-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-ink hover:bg-elevated transition-colors"
+          className="relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+          style={{ color: "var(--text-muted)" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-elevated)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = ""; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
           aria-label="Notifications"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
           </svg>
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
@@ -194,8 +203,13 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-2 overflow-y-auto">
-        <p className="text-[10px] font-semibold text-ink-disabled uppercase tracking-widest px-3 mb-2">Navigation</p>
+      <nav className="flex-1 px-3 overflow-y-auto">
+        <p
+          className="text-[10px] font-semibold uppercase tracking-widest px-3 mb-2"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Menu
+        </p>
         <div className="space-y-0.5">
           {links.map(({ href, label, icon }) => {
             const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -203,42 +217,42 @@ export default function Sidebar() {
 
             return (
               <div key={href}>
-                <div className={`flex items-center gap-1 rounded-xl ${isActive ? "bg-accent-50 shadow-sm" : ""}`}>
+                <div
+                  className="flex items-center gap-1 rounded-lg overflow-hidden"
+                  style={isActive ? {
+                    background: "var(--accent-glow)",
+                    borderLeft: "3px solid var(--accent)",
+                  } : { borderLeft: "3px solid transparent" }}
+                >
                   <Link
                     href={href}
-                    className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      isActive
-                        ? "text-accent-700"
-                        : "text-ink-secondary hover:text-ink hover:bg-elevated"
-                    }`}
+                    className="flex-1 flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors"
+                    style={{ color: isActive ? "var(--accent)" : "var(--text-secondary)" }}
+                    onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLAnchorElement).style.background = "var(--bg-elevated)"; }}
+                    onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLAnchorElement).style.background = ""; }}
                   >
-                    <span className={isActive ? "text-accent-600" : "text-ink-muted"}>{icon}</span>
+                    <span style={{ color: isActive ? "var(--accent)" : "var(--text-muted)" }}>{icon}</span>
                     {label}
-                    {isActive && !isCoach && (
-                      <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-500" />
-                    )}
                   </Link>
 
-                  {/* New Chat button — only visible on AI Coach row */}
                   {isCoach && (
                     <button
-                      onClick={() => {
-                        const id = crypto.randomUUID();
-                        router.push(`/coach?session=${id}`);
-                      }}
+                      onClick={() => router.push(`/coach?session=${crypto.randomUUID()}`)}
                       title="New chat"
-                      className="mr-1.5 w-6 h-6 rounded-lg flex items-center justify-center text-ink-muted hover:text-accent-600 hover:bg-accent-50 transition-colors shrink-0"
+                      className="mr-2 w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors"
+                      style={{ color: "var(--text-muted)" }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; (e.currentTarget as HTMLButtonElement).style.background = "var(--accent-glow)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLButtonElement).style.background = ""; }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M12 5v14M5 12h14"/>
                       </svg>
                     </button>
                   )}
                 </div>
 
-                {/* Session sub-list — shown under AI Coach */}
                 {isCoach && chatSessions.length > 0 && (
-                  <div className="ml-3 mt-0.5 mb-1 space-y-0.5 border-l border-border pl-3">
+                  <div className="ml-5 mt-0.5 mb-1 space-y-0.5 pl-3" style={{ borderLeft: "1px solid var(--bg-border)" }}>
                     {chatSessions.slice(0, 6).map((s) => {
                       const sessionActive = pathname.startsWith("/coach") &&
                         (typeof window !== "undefined"
@@ -248,13 +262,13 @@ export default function Sidebar() {
                         <Link
                           key={s.session_id}
                           href={`/coach?session=${s.session_id}`}
-                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors truncate ${
-                            sessionActive
-                              ? "bg-accent-100 text-accent-700 font-medium"
-                              : "text-ink-muted hover:text-ink hover:bg-elevated"
-                          }`}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors truncate"
+                          style={{
+                            color: sessionActive ? "var(--accent)" : "var(--text-muted)",
+                            background: sessionActive ? "var(--accent-glow)" : "transparent",
+                          }}
                         >
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                           </svg>
                           <span className="truncate">{s.title}</span>
@@ -270,38 +284,52 @@ export default function Sidebar() {
       </nav>
 
       {/* User footer */}
-      <div className="px-3 py-4 border-t border-border">
-        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-elevated transition-colors">
-          <div className="w-8 h-8 rounded-full bg-accent-100 flex items-center justify-center shrink-0">
-            <span className="text-xs font-semibold text-accent-700">{initials}</span>
+      <div className="px-3 py-4" style={{ borderTop: "1px solid var(--bg-border)" }}>
+        <div
+          className="flex items-center gap-3 px-2 py-2 rounded-lg transition-colors cursor-default"
+          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg-elevated)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = ""; }}
+        >
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+            style={{ background: "var(--accent-glow)", color: "var(--accent)", border: "1px solid rgba(45,212,191,0.3)" }}
+          >
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
             {session?.user?.email && (
-              <p className="text-xs text-ink-secondary truncate">{session.user.email}</p>
+              <p className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>{session.user.email}</p>
             )}
           </div>
         </div>
+
         <div className="mt-1 flex items-center gap-1">
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
-            className="flex-1 text-left text-xs text-ink-muted hover:text-ink px-3 py-2 rounded-lg hover:bg-elevated transition-colors"
+            className="flex-1 text-left text-xs px-3 py-2 rounded-lg transition-colors"
+            style={{ color: "var(--text-muted)" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--red)"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(248,113,113,0.08)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLButtonElement).style.background = ""; }}
           >
             Sign out
           </button>
           <button
             onClick={toggleTheme}
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-ink hover:bg-elevated transition-colors shrink-0"
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0"
+            style={{ color: "var(--text-muted)" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-elevated)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLButtonElement).style.background = ""; }}
           >
             {theme === "dark" ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
                 <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
                 <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
                 <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
               </svg>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
               </svg>
             )}
@@ -309,72 +337,61 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Notification panel — slides out to the right of the sidebar */}
+      {/* Notification panel */}
       {panelOpen && (
         <div
           ref={panelRef}
-          className="absolute left-full top-0 h-screen w-80 bg-surface border-r border-border shadow-lg flex flex-col z-30"
+          className="absolute left-full top-0 h-screen w-80 flex flex-col z-30"
+          style={{ background: "var(--bg-surface)", borderRight: "1px solid var(--bg-border)", boxShadow: "4px 0 24px rgba(0,0,0,0.4)" }}
         >
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-4 py-4 border-b border-border shrink-0">
+          <div className="flex items-center justify-between px-4 py-4 shrink-0" style={{ borderBottom: "1px solid var(--bg-border)" }}>
             <div>
-              <p className="text-sm font-semibold text-ink">Notifications</p>
-              {unreadCount > 0 && (
-                <p className="text-[11px] text-ink-muted">{unreadCount} unread</p>
-              )}
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Notifications</p>
+              {unreadCount > 0 && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{unreadCount} unread</p>}
             </div>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllRead}
-                className="text-xs text-accent-600 hover:text-accent-700 font-medium"
+                className="text-xs font-medium transition-colors"
+                style={{ color: "var(--accent)" }}
               >
                 Mark all read
               </button>
             )}
           </div>
 
-          {/* List */}
           <div className="flex-1 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
-                <div className="w-10 h-10 rounded-full bg-elevated flex items-center justify-center">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-ink-muted">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--text-muted)" }}>
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                     <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
                   </svg>
                 </div>
-                <p className="text-sm text-ink-muted">No notifications yet.</p>
-                <p className="text-xs text-ink-muted">The hunter will alert you here when it finds strong matches.</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>No notifications yet. The AI hunter will alert you when it finds strong matches.</p>
               </div>
             ) : (
-              <ul className="divide-y divide-border">
+              <ul>
                 {notifications.map(n => (
                   <li
                     key={n.id}
                     onClick={() => handleNotificationClick(n)}
-                    className={`px-4 py-3.5 cursor-pointer hover:bg-elevated transition-colors ${
-                      !n.read ? "bg-accent-50" : ""
-                    }`}
+                    className="px-4 py-3.5 cursor-pointer transition-colors"
+                    style={{ borderBottom: "1px solid var(--bg-border)", background: !n.read ? "var(--accent-glow)" : "transparent" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLLIElement).style.background = "var(--bg-elevated)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLLIElement).style.background = !n.read ? "var(--accent-glow)" : "transparent"; }}
                   >
                     <div className="flex items-start gap-2.5">
-                      {/* Unread dot */}
-                      <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${
-                        !n.read ? "bg-accent-500" : "bg-transparent"
-                      }`} />
+                      <span
+                        className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ background: !n.read ? "var(--accent)" : "transparent" }}
+                      />
                       <div className="flex-1 min-w-0">
-                        <p className={`text-xs leading-snug ${!n.read ? "font-semibold text-ink" : "text-ink-secondary"}`}>
-                          {n.title}
-                        </p>
-                        {n.body && (
-                          <p className="text-[11px] text-ink-muted mt-0.5 line-clamp-2">{n.body}</p>
-                        )}
-                        <p className="text-[10px] text-ink-muted mt-1">{timeAgo(n.created_at)}</p>
+                        <p className="text-xs leading-snug" style={{ color: "var(--text-primary)", fontWeight: !n.read ? 600 : 400 }}>{n.title}</p>
+                        {n.body && <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: "var(--text-muted)" }}>{n.body}</p>}
+                        <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>{timeAgo(n.created_at)}</p>
                       </div>
-                      {n.job_id && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ink-muted shrink-0 mt-1">
-                          <polyline points="9 18 15 12 9 6"/>
-                        </svg>
-                      )}
                     </div>
                   </li>
                 ))}

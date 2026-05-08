@@ -3,7 +3,74 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
-   Auth page utilities
+   Design tokens — dark navy SaaS
+   --------------------------------------------------------------------------- */
+@layer base {
+  :root {
+    --bg-base:        #0A0E1A;
+    --bg-surface:     #111827;
+    --bg-elevated:    #1A2235;
+    --bg-border:      #1E2D45;
+    --accent:         #2DD4BF;
+    --accent-dim:     #0F766E;
+    --accent-glow:    rgba(45, 212, 191, 0.15);
+    --text-primary:   #F1F5F9;
+    --text-secondary: #94A3B8;
+    --text-muted:     #475569;
+    --red:            #F87171;
+    --green:          #34D399;
+    --yellow:         #FBBF24;
+    --blue:           #60A5FA;
+    --radius:         10px;
+    --radius-lg:      16px;
+  }
+
+  /* Light-mode override (toggle adds .theme-light to <html>) */
+  html.theme-light {
+    --bg-base:        #F8FAFB;
+    --bg-surface:     #FFFFFF;
+    --bg-elevated:    #F1F5F9;
+    --bg-border:      #E2E8F0;
+    --accent:         #0D9488;
+    --accent-dim:     #0F766E;
+    --accent-glow:    rgba(13, 148, 136, 0.12);
+    --text-primary:   #0F172A;
+    --text-secondary: #475569;
+    --text-muted:     #94A3B8;
+    --red:            #EF4444;
+    --green:          #10B981;
+    --yellow:         #F59E0B;
+    --blue:           #3B82F6;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: dark;
+  }
+
+  html.theme-light {
+    color-scheme: light;
+  }
+
+  body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-inter, "Inter"), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-space, var(--font-inter, "Inter")), ui-sans-serif, sans-serif;
+  }
+
+  ::-webkit-scrollbar        { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track  { background: transparent; }
+  ::-webkit-scrollbar-thumb  { background: var(--bg-border); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+}
+
+/* ---------------------------------------------------------------------------
+   Auth pages (keep existing dark auth styles)
    --------------------------------------------------------------------------- */
 
 @keyframes authFadeUp {
@@ -18,20 +85,16 @@
 .auth-bg {
   background-color: #060b14;
   background-image:
-    radial-gradient(ellipse 80% 50% at 50% -5%, rgba(59, 130, 246, 0.10) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 40% at 85% 90%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='250' height='250'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='250' height='250' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
-  background-size: auto, auto, 250px 250px;
+    radial-gradient(ellipse 80% 50% at 50% -5%, rgba(59,130,246,0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 85% 90%, rgba(99,102,241,0.06) 0%, transparent 50%);
 }
 
 .auth-glass {
   background: rgba(8, 11, 22, 0.78);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
 .auth-label {
@@ -47,8 +110,7 @@
 
 .auth-btn-primary {
   @apply flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98]
-         text-white text-sm font-semibold py-3 rounded-xl
-         transition-all duration-200
+         text-white text-sm font-semibold py-3 rounded-xl transition-all duration-200
          disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
          focus:outline-none focus:ring-2 focus:ring-blue-500/40;
 }
@@ -61,104 +123,129 @@
          focus:outline-none focus:ring-2 focus:ring-[#1e2640];
 }
 
-@layer base {
-  :root {
-    --bg-base:         #F8FAFB;
-    --bg-surface:      #FFFFFF;
-    --bg-elevated:     #F1F5F9;
-    --text-primary:    #0F172A;
-    --text-secondary:  #475569;
-    --text-muted:      #94A3B8;
-    --border:          #E2E8F0;
-    --border-subtle:   #F1F5F9;
-    --accent:          #0D9488;
-    --accent-light:    #F0FDFA;
-    --ai:              #6366F1;
-    --ai-light:        #EEF2FF;
+/* ---------------------------------------------------------------------------
+   Core component design system
+   --------------------------------------------------------------------------- */
+@layer components {
+
+  /* ---- Card ---- */
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid var(--bg-border);
+    border-radius: var(--radius-lg);
   }
 
-  html {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+  /* ---- Primary button ---- */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold
+           transition-all duration-150 focus:outline-none
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    background: var(--accent);
+    color: #050C10;
+    border-radius: var(--radius);
+  }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.12);
+    box-shadow: 0 4px 20px var(--accent-glow);
   }
 
-  body {
-    background: var(--bg-base);
+  /* ---- Ghost button ---- */
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-medium
+           transition-all duration-150 focus:outline-none
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    color: var(--text-secondary);
+    border-radius: var(--radius);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--bg-elevated);
     color: var(--text-primary);
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   }
 
-  /* Dark mode — override CSS variables so the base Tailwind config stays unchanged */
-  .dark {
-    color-scheme: dark;
-    --bg-base:        #0F172A;
-    --bg-surface:     #1E293B;
-    --bg-elevated:    #2D3748;
-    --text-primary:   #F1F5F9;
-    --text-secondary: #94A3B8;
-    --text-muted:     #64748B;
-    --text-disabled:  #475569;
-    --border:         #334155;
-    --border-subtle:  #1E293B;
-    --accent:         #14B8A6;
-    --accent-light:   #0F766E;
-    --ai:             #818CF8;
-    --ai-light:       #312E81;
+  /* ---- Form input ---- */
+  .input {
+    @apply w-full px-3 py-2.5 text-sm transition-all duration-150 focus:outline-none;
+    background: var(--bg-elevated);
+    border: 1px solid var(--bg-border);
+    color: var(--text-primary);
+    border-radius: var(--radius);
+  }
+  .input::placeholder { color: var(--text-muted); }
+  .input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
   }
 
-  .dark body {
-    background: #0F172A;
-    color: #F1F5F9;
+  /* select inherits .input but needs appearance reset */
+  select.input { appearance: auto; }
+
+  /* ---- Section label ---- */
+  .label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
   }
-
-  /* Scrollbar dark */
-  .dark ::-webkit-scrollbar-thumb { background: #334155; }
-  .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
-
-  * {
-    box-sizing: border-box;
-  }
-
-  /* Scrollbar — slim and neutral */
-  ::-webkit-scrollbar        { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track  { background: transparent; }
-  ::-webkit-scrollbar-thumb  { background: #CBD5E1; border-radius: 9999px; }
-  ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 }
 
-@layer components {
-  /* Card surface */
-  .card {
-    @apply bg-surface rounded-2xl shadow-card border border-border/60
-           dark:bg-slate-800 dark:border-slate-700/70 dark:shadow-none;
-  }
+/* ---------------------------------------------------------------------------
+   Keyframe animations
+   --------------------------------------------------------------------------- */
 
-  /* Primary button */
-  .btn-primary {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-600 text-white text-sm font-medium
-           hover:bg-accent-700 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500/40
-           disabled:opacity-40 disabled:cursor-not-allowed;
-  }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-  /* Ghost button */
-  .btn-ghost {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl text-ink-secondary text-sm font-medium
-           hover:bg-elevated transition-colors focus:outline-none focus:ring-2 focus:ring-border
-           disabled:opacity-40 disabled:cursor-not-allowed
-           dark:text-slate-400 dark:hover:bg-slate-700/60;
-  }
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.3; transform: scale(0.75); }
+}
 
-  /* Form input */
-  .input {
-    @apply w-full px-3 py-2.5 rounded-xl border border-border bg-surface text-ink text-sm
-           placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent-500/30
-           focus:border-accent-500 transition
-           dark:bg-slate-800/80 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500;
-  }
+@keyframes shimmerSlide {
+  0%   { background-position: -300% 0; }
+  100% { background-position: 300% 0; }
+}
 
-  /* Section label */
-  .label {
-    @apply block text-xs font-medium text-ink-muted uppercase tracking-wider mb-1.5
-           dark:text-slate-500;
-  }
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50%       { box-shadow: 0 0 12px 3px var(--accent-glow); }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.22s ease both;
+}
+
+.pulse-dot {
+  animation: pulseDot 1.8s ease-in-out infinite;
+}
+
+.shimmer-card {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 0%,
+    var(--bg-elevated) 45%,
+    var(--bg-surface) 100%
+  );
+  background-size: 300% 100%;
+  animation: shimmerSlide 2.4s ease-in-out infinite;
+}
+
+/* Gradient-border card (Full Hunt) */
+.gradient-border-card {
+  position: relative;
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(var(--bg-surface), var(--bg-surface)) padding-box,
+    linear-gradient(135deg, var(--accent), var(--accent-dim)) border-box;
+  border: 1.5px solid transparent;
+}
+
+/* Dot-grid background pattern */
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(45,212,191,0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
