@@ -22,7 +22,6 @@ export default function JobsPage() {
   const [page, setPage] = useState(0);
 
   const PAGE_SIZE = 25;
-
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback((kw: string, st: string) => {
@@ -49,16 +48,12 @@ export default function JobsPage() {
     const unscored = jobs.filter((j) => fitScores[j.id] == null);
     if (unscored.length === 0) return;
     if (unscored.length > 5) {
-      const ok = window.confirm(
-        `This will run AI analysis on ${unscored.length} jobs (uses API credits). Continue?`
-      );
+      const ok = window.confirm(`This will run AI analysis on ${unscored.length} jobs (uses API credits). Continue?`);
       if (!ok) return;
     }
-
     setAnalyzing(true);
     let done = 0;
     const CONCURRENCY = 4;
-
     const runBatch = async (batch: typeof unscored) => {
       await Promise.allSettled(
         batch.map(async (job) => {
@@ -71,11 +66,9 @@ export default function JobsPage() {
         })
       );
     };
-
     for (let i = 0; i < unscored.length; i += CONCURRENCY) {
       await runBatch(unscored.slice(i, i + CONCURRENCY));
     }
-
     setAnalyzing(false);
     setAnalyzeProgress("Done");
     setTimeout(() => setAnalyzeProgress(""), 2000);
@@ -87,24 +80,22 @@ export default function JobsPage() {
   };
 
   const handleExportCsv = async () => {
-    try {
-      await exportJobsCsv();
-    } catch { /* silent — browser will show nothing on fail */ }
+    try { await exportJobsCsv(); } catch { /* silent */ }
   };
 
   return (
     <div className="max-w-6xl">
-      {/* Page header */}
+      {/* Header */}
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink tracking-tight">Jobs</h1>
-          <p className="text-sm text-ink-secondary mt-0.5">
+          <h1 className="text-2xl font-bold font-heading tracking-tight" style={{ color: "var(--text-primary)" }}>Jobs</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
             {jobs.length > 0 ? `${jobs.length} job${jobs.length !== 1 ? "s" : ""} tracked` : "No jobs yet"}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {analyzeProgress && (
-            <span className="text-xs text-ink-muted">{analyzeProgress}</span>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>{analyzeProgress}</span>
           )}
           <button
             onClick={handleAnalyzeAll}
@@ -132,9 +123,17 @@ export default function JobsPage() {
       </div>
 
       {/* Filters */}
-      <div className="card p-4 flex flex-wrap gap-3 mb-6">
+      <div
+        className="p-4 rounded-2xl flex flex-wrap gap-3 mb-6"
+        style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}
+      >
         <div className="relative flex-1 min-w-48">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted">
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: "var(--text-muted)" }}
+          >
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
           <input
@@ -150,11 +149,14 @@ export default function JobsPage() {
             <button
               key={s}
               onClick={() => setStatus(s)}
-              className={`px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+              className="px-3 py-1.5 rounded-xl text-xs font-medium transition-colors"
+              style={
                 status === s
-                  ? "bg-accent-600 text-white"
-                  : "bg-elevated text-ink-secondary hover:text-ink hover:bg-border"
-              }`}
+                  ? { background: "var(--accent)", color: "#050C10", fontWeight: 600 }
+                  : { background: "var(--bg-elevated)", color: "var(--text-secondary)", border: "1px solid var(--bg-border)" }
+              }
+              onMouseEnter={e => { if (status !== s) (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
+              onMouseLeave={e => { if (status !== s) (e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)"; }}
             >
               {s}
             </button>
@@ -162,7 +164,7 @@ export default function JobsPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {loading ? (
         <LoadingSpinner />
       ) : jobs.length === 0 ? (
@@ -176,32 +178,44 @@ export default function JobsPage() {
         const pageJobs   = jobs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
         return (
           <>
-            <div className="card overflow-hidden">
+            <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-base">
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Title</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Company</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden md:table-cell">Location</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider">Status</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden lg:table-cell">Fit</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-ink-muted uppercase tracking-wider hidden lg:table-cell">Added</th>
+                  <tr style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--bg-border)" }}>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Title</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Company</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider hidden md:table-cell" style={{ color: "var(--text-muted)" }}>Location</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Status</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>Fit</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>Added</th>
                     <th className="px-5 py-3" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {pageJobs.map((job) => (
-                    <tr key={job.id} className="hover:bg-base transition-colors group">
+                    <tr
+                      key={job.id}
+                      className="group transition-colors"
+                      style={{ borderBottom: "1px solid var(--bg-border)" }}
+                      onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = "var(--bg-elevated)"}
+                      onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = ""}
+                    >
                       <td className="px-5 py-3.5">
-                        <Link href={`/jobs/${job.id}`} className="font-medium text-ink hover:text-accent-600 transition-colors">
+                        <Link
+                          href={`/jobs/${job.id}`}
+                          className="font-medium text-sm transition-colors"
+                          style={{ color: "var(--text-primary)" }}
+                          onMouseEnter={e => (e.currentTarget as HTMLAnchorElement).style.color = "var(--accent)"}
+                          onMouseLeave={e => (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-primary)"}
+                        >
                           {job.title}
                         </Link>
                       </td>
-                      <td className="px-5 py-3.5 text-ink-secondary text-sm">{job.company}</td>
-                      <td className="px-5 py-3.5 text-ink-muted text-sm hidden md:table-cell">{job.location || "—"}</td>
+                      <td className="px-5 py-3.5 text-sm" style={{ color: "var(--text-secondary)" }}>{job.company}</td>
+                      <td className="px-5 py-3.5 text-sm hidden md:table-cell" style={{ color: "var(--text-muted)" }}>{job.location || "—"}</td>
                       <td className="px-5 py-3.5"><StatusBadge status={job.status} /></td>
                       <td className="px-5 py-3.5 hidden lg:table-cell"><FitScore score={fitScores[job.id] ?? null} /></td>
-                      <td className="px-5 py-3.5 text-ink-muted text-xs hidden lg:table-cell">{job.date_added}</td>
+                      <td className="px-5 py-3.5 text-xs hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>{job.date_added}</td>
                       <td className="px-5 py-3.5">
                         <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                           <Link href={`/jobs/${job.id}`} className="btn-ghost text-xs py-1 px-2.5">View</Link>
@@ -216,7 +230,7 @@ export default function JobsPage() {
 
             {totalPages > 1 && (
               <div className="flex items-center justify-between mt-4 px-1">
-                <p className="text-xs text-ink-muted">
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                   Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, jobs.length)} of {jobs.length}
                 </p>
                 <div className="flex items-center gap-1.5">
@@ -231,11 +245,14 @@ export default function JobsPage() {
                     <button
                       key={i}
                       onClick={() => setPage(i)}
-                      className={`text-xs w-7 h-7 rounded-lg font-medium transition-colors ${
+                      className="text-xs w-7 h-7 rounded-lg font-medium transition-colors"
+                      style={
                         i === page
-                          ? "bg-accent-600 text-white"
-                          : "text-ink-secondary hover:bg-elevated"
-                      }`}
+                          ? { background: "var(--accent)", color: "#050C10" }
+                          : { color: "var(--text-secondary)" }
+                      }
+                      onMouseEnter={e => { if (i !== page) (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-elevated)"; }}
+                      onMouseLeave={e => { if (i !== page) (e.currentTarget as HTMLButtonElement).style.background = ""; }}
                     >
                       {i + 1}
                     </button>

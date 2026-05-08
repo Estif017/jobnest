@@ -57,7 +57,6 @@ export default function JobDetailPage() {
         .then(setNews)
         .catch(() => setNews(null))
         .finally(() => setNewsLoading(false));
-      // Load existing prep if job is already Interviewing
       if (j.status === "Interviewing") {
         fetchInterviewPrep(jobId).then(setPrep).catch(() => {});
       }
@@ -78,14 +77,11 @@ export default function JobDetailPage() {
     if (!job) return;
     const updated = await updateJob(jobId, { status: newStatus });
     setJob(updated);
-    // When flipping to Interviewing: check if prep exists first, generate only if not
     if (newStatus === "Interviewing" && !prep && !prepLoading) {
       setPrepLoading(true);
       fetchInterviewPrep(jobId)
         .then(setPrep)
-        .catch(() =>
-          generateInterviewPrep(jobId).then(setPrep).catch(() => {})
-        )
+        .catch(() => generateInterviewPrep(jobId).then(setPrep).catch(() => {}))
         .finally(() => setPrepLoading(false));
     }
   };
@@ -99,8 +95,7 @@ export default function JobDetailPage() {
     setAgentLoading(true);
     setAgentError(null);
     try {
-      const result = await agentAnalyzeJob(jobId);
-      setAgentResult(result);
+      setAgentResult(await agentAnalyzeJob(jobId));
     } catch (e) {
       setAgentError(e instanceof Error ? e.message : "Agent analyze failed.");
     } finally {
@@ -112,8 +107,7 @@ export default function JobDetailPage() {
     setProduceLoading(true);
     setProduceError(null);
     try {
-      const result = await agentProduceJob(jobId);
-      setProduceResult(result);
+      setProduceResult(await agentProduceJob(jobId));
     } catch (e) {
       setProduceError(e instanceof Error ? e.message : "Agent write failed.");
     } finally {
@@ -125,8 +119,7 @@ export default function JobDetailPage() {
     setHuntLoading(true);
     setHuntError(null);
     try {
-      const result = await fullHuntJob(jobId);
-      setHuntResult(result);
+      setHuntResult(await fullHuntJob(jobId));
     } catch (e) {
       setHuntError(e instanceof Error ? e.message : "Full Hunt failed.");
     } finally {
@@ -135,7 +128,7 @@ export default function JobDetailPage() {
   };
 
   if (loading) return <LoadingSpinner />;
-  if (!job) return <p className="text-ink-muted">Job not found.</p>;
+  if (!job) return <p style={{ color: "var(--text-muted)" }}>Job not found.</p>;
 
   const isInterviewing = job.status === "Interviewing";
 
@@ -143,7 +136,10 @@ export default function JobDetailPage() {
     <div className="max-w-3xl">
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-1.5 text-xs text-ink-muted hover:text-ink mb-4 transition-colors"
+        className="flex items-center gap-1.5 text-xs mb-4 transition-colors"
+        style={{ color: "var(--text-muted)" }}
+        onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"}
+        onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="15 18 9 12 15 6"/>
@@ -156,21 +152,21 @@ export default function JobDetailPage() {
         actions={
           <ConfirmButton
             onConfirm={handleDelete}
-            className="text-sm px-4 py-2 rounded-xl text-rose-600 hover:bg-rose-50 transition-colors"
+            className="text-sm px-4 py-2 rounded-xl transition-colors"
           />
         }
       />
 
       {/* Job info card */}
-      <div className="card p-6 mb-4">
+      <div className="rounded-2xl p-6 mb-4" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
         <div className="grid grid-cols-2 gap-5 text-sm">
           <div>
             <p className="label">Company</p>
-            <p className="text-ink font-medium">{job.company}</p>
+            <p className="font-medium" style={{ color: "var(--text-primary)" }}>{job.company}</p>
           </div>
           <div>
             <p className="label">Location</p>
-            <p className="text-ink">{job.location || "—"}</p>
+            <p style={{ color: "var(--text-primary)" }}>{job.location || "—"}</p>
           </div>
           <div>
             <p className="label">Status</p>
@@ -179,14 +175,12 @@ export default function JobDetailPage() {
               onChange={(e) => handleStatusChange(e.target.value)}
               className="input w-auto text-xs py-1.5"
             >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             <p className="label">Date Added</p>
-            <p className="text-ink-secondary">{job.date_added}</p>
+            <p style={{ color: "var(--text-secondary)" }}>{job.date_added}</p>
           </div>
           <div>
             <p className="label">Date Applied</p>
@@ -213,7 +207,8 @@ export default function JobDetailPage() {
                 href={job.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent-600 hover:underline text-sm truncate block"
+                className="text-sm truncate block transition-colors"
+                style={{ color: "var(--accent)" }}
               >
                 {job.url}
               </a>
@@ -222,32 +217,36 @@ export default function JobDetailPage() {
           {job.notes && (
             <div className="col-span-2">
               <p className="label">Notes</p>
-              <p className="text-ink-secondary">{job.notes}</p>
+              <p style={{ color: "var(--text-secondary)" }}>{job.notes}</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Full Hunt — The Orchestrator                                        */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="card p-5 mb-4 border border-accent-200">
+      {/* Full Hunt — gradient border card */}
+      <div className="gradient-border-card p-5 mb-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-accent-50 flex items-center justify-center shrink-0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent-600">
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "rgba(45,212,191,0.1)" }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
               </svg>
             </div>
             <div>
-              <p className="text-sm font-semibold text-ink">Full Hunt</p>
-              <p className="text-[11px] text-ink-muted">One prompt · Claude orchestrates the entire pipeline</p>
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Full Hunt</p>
+              <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>One prompt · Claude orchestrates the entire pipeline</p>
             </div>
           </div>
           {!huntLoading && (
             <button
               onClick={handleFullHunt}
-              className="text-xs px-3 py-1.5 rounded-xl bg-accent-600 text-white hover:bg-accent-700 font-medium transition-colors"
+              className="text-xs px-3 py-1.5 rounded-xl font-medium transition-all"
+              style={{ background: "var(--accent)", color: "#050C10" }}
+              onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.12)"}
+              onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.filter = ""}
             >
               {huntResult ? "Re-run Hunt" : "Help Me Land This Job"}
             </button>
@@ -257,12 +256,17 @@ export default function JobDetailPage() {
         {huntLoading && (
           <div className="space-y-2 py-2">
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-border border-t-accent-600 rounded-full animate-spin shrink-0" />
-              <p className="text-xs text-ink-muted">Orchestrator running — Claude is deciding what to do…</p>
+              <div className="w-4 h-4 border-2 rounded-full animate-spin shrink-0"
+                style={{ borderColor: "var(--bg-border)", borderTopColor: "var(--accent)" }} />
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Orchestrator running — Claude is deciding what to do…</p>
             </div>
             <div className="flex gap-1.5 ml-6">
               {["Analyzing fit", "Researching company", "Writing application"].map((step, i) => (
-                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-elevated border border-border text-ink-muted animate-pulse" style={{ animationDelay: `${i * 400}ms` }}>
+                <span
+                  key={i}
+                  className="text-[10px] px-2 py-0.5 rounded-full animate-pulse"
+                  style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)", color: "var(--text-muted)", animationDelay: `${i * 400}ms` }}
+                >
                   {step}
                 </span>
               ))}
@@ -271,30 +275,46 @@ export default function JobDetailPage() {
         )}
 
         {huntError && !huntLoading && (
-          <p className="text-xs text-rose-600 py-1">{huntError}</p>
+          <p className="text-xs py-1" style={{ color: "var(--red)" }}>{huntError}</p>
         )}
 
         {huntResult && !huntLoading && (
           <div className="space-y-5">
-            {/* Verdict + score bar */}
-            <div className={`rounded-xl px-4 py-3 flex items-center gap-4 ${
-              huntResult.verdict === "RED FLAG" ? "bg-rose-50 border border-rose-100"
-              : huntResult.verdict === "APPLY"  ? "bg-emerald-50 border border-emerald-100"
-              : "bg-amber-50 border border-amber-100"
-            }`}>
-              <span className={`text-sm font-bold ${
-                huntResult.verdict === "RED FLAG" ? "text-rose-700"
-                : huntResult.verdict === "APPLY"  ? "text-emerald-700"
-                : "text-amber-700"
-              }`}>{huntResult.verdict}</span>
+            {/* Verdict row */}
+            <div
+              className="rounded-xl px-4 py-3 flex items-center gap-4"
+              style={
+                huntResult.verdict === "RED FLAG"
+                  ? { background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)" }
+                  : huntResult.verdict === "APPLY"
+                  ? { background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)" }
+                  : { background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.2)" }
+              }
+            >
+              <span
+                className="text-sm font-bold"
+                style={{
+                  color: huntResult.verdict === "RED FLAG" ? "var(--red)"
+                    : huntResult.verdict === "APPLY" ? "var(--green)"
+                    : "var(--yellow)",
+                }}
+              >
+                {huntResult.verdict}
+              </span>
               {huntResult.fit_score != null && (
-                <span className="text-sm font-semibold text-ink">{huntResult.fit_score}<span className="text-ink-muted font-normal">/10</span></span>
+                <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {huntResult.fit_score}
+                  <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>/10</span>
+                </span>
               )}
-              {/* Tool call trace */}
               {huntResult.tool_calls_log.length > 0 && (
                 <div className="ml-auto flex items-center gap-1.5">
                   {huntResult.tool_calls_log.map((tc, i) => (
-                    <span key={i} className="text-[10px] font-mono bg-white border border-border px-2 py-0.5 rounded-md text-ink-muted">
+                    <span
+                      key={i}
+                      className="text-[10px] font-mono px-2 py-0.5 rounded-md"
+                      style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)", color: "var(--text-muted)" }}
+                    >
                       {tc.tool === "analyze_job" ? "analyze" : tc.tool === "write_application" ? "write" : "coach"}
                     </span>
                   ))}
@@ -302,15 +322,13 @@ export default function JobDetailPage() {
               )}
             </div>
 
-            {/* Orchestrator summary */}
             {huntResult.orchestrator_summary && (
               <div>
                 <p className="label mb-1.5">Orchestrator Summary</p>
-                <p className="text-sm text-ink-secondary leading-relaxed whitespace-pre-wrap">{huntResult.orchestrator_summary}</p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "var(--text-secondary)" }}>{huntResult.orchestrator_summary}</p>
               </div>
             )}
 
-            {/* Analysis details */}
             {huntResult.analysis && (
               <div className="grid grid-cols-2 gap-3">
                 {huntResult.analysis.skills_matched.length > 0 && (
@@ -318,7 +336,10 @@ export default function JobDetailPage() {
                     <p className="label mb-1.5">Skills Matched</p>
                     <div className="flex flex-wrap gap-1.5">
                       {huntResult.analysis.skills_matched.map((s, i) => (
-                        <span key={i} className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{s}</span>
+                        <span key={i} className="text-xs px-2.5 py-0.5 rounded-full"
+                          style={{ background: "rgba(52,211,153,0.1)", color: "var(--green)" }}>
+                          {s}
+                        </span>
                       ))}
                     </div>
                   </div>
@@ -328,7 +349,10 @@ export default function JobDetailPage() {
                     <p className="label mb-1.5">Skill Gaps</p>
                     <div className="flex flex-wrap gap-1.5">
                       {huntResult.analysis.skill_gaps.map((s, i) => (
-                        <span key={i} className="text-xs px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700">{s}</span>
+                        <span key={i} className="text-xs px-2.5 py-0.5 rounded-full"
+                          style={{ background: "rgba(248,113,113,0.1)", color: "var(--red)" }}>
+                          {s}
+                        </span>
                       ))}
                     </div>
                   </div>
@@ -336,58 +360,62 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {/* Resume summary */}
             {huntResult.resume_summary && (
               <div>
                 <p className="label mb-1.5">Tailored Resume Summary</p>
-                <p className="text-sm text-ink-secondary leading-relaxed bg-base border border-border rounded-xl px-4 py-3">
+                <p className="text-sm leading-relaxed px-4 py-3 rounded-xl"
+                  style={{ color: "var(--text-secondary)", background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
                   {huntResult.resume_summary}
                 </p>
               </div>
             )}
 
-            {/* Cover letter */}
             {huntResult.cover_letter && (
               <div>
                 <p className="label mb-1.5">Cover Letter</p>
-                <pre className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed bg-base border border-border rounded-xl px-4 py-4 font-sans">
+                <pre className="text-sm whitespace-pre-wrap leading-relaxed px-4 py-4 rounded-xl font-sans"
+                  style={{ color: "var(--text-secondary)", background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
                   {huntResult.cover_letter}
                 </pre>
               </div>
             )}
 
-            {/* Coach advice */}
             {huntResult.coach_advice && (
-              <div className="bg-ai-50 border border-ai-100 rounded-xl px-4 py-3.5">
-                <p className="text-xs font-semibold text-ai-600 mb-1.5">Coach Advice</p>
-                <p className="text-sm text-ink-secondary leading-relaxed">{huntResult.coach_advice}</p>
+              <div className="px-4 py-3.5 rounded-xl"
+                style={{ background: "rgba(45,212,191,0.06)", border: "1px solid rgba(45,212,191,0.15)" }}>
+                <p className="text-xs font-semibold mb-1.5" style={{ color: "var(--accent)" }}>Coach Advice</p>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>{huntResult.coach_advice}</p>
               </div>
             )}
           </div>
         )}
 
         {!huntResult && !huntLoading && !huntError && (
-          <p className="text-xs text-ink-muted py-1">
+          <p className="text-xs py-1" style={{ color: "var(--text-muted)" }}>
             Click &ldquo;Help Me Land This Job&rdquo; — Claude will analyze fit, write your application, and coach you on gaps. All in one shot.
           </p>
         )}
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Interview Prep Pack — auto-triggers when status → Interviewing      */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Interview Prep Pack */}
       {(isInterviewing || prepLoading) && (
-        <div className="card p-6 mb-4 border-l-4 border-l-amber-400">
+        <div
+          className="rounded-2xl p-6 mb-4"
+          style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)", borderLeft: "3px solid var(--yellow)" }}
+        >
           <div className="flex items-center gap-2.5 mb-5">
-            <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600">
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "rgba(251,191,36,0.1)" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--yellow)" }}>
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                 <polyline points="22 4 12 14.01 9 11.01"/>
               </svg>
             </div>
             <div>
-              <p className="text-sm font-semibold text-ink">Interview Prep Pack</p>
-              <p className="text-[11px] text-ink-muted">
+              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Interview Prep Pack</p>
+              <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                 {prepLoading ? "Generating…" : "Auto-generated when you moved to Interviewing"}
               </p>
             </div>
@@ -396,17 +424,17 @@ export default function JobDetailPage() {
           {prepLoading && (
             <div className="space-y-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-4 h-4 border-2 border-border border-t-amber-500 rounded-full animate-spin shrink-0" />
-                <p className="text-xs text-ink-muted">
+                <div className="w-4 h-4 border-2 rounded-full animate-spin shrink-0"
+                  style={{ borderColor: "var(--bg-border)", borderTopColor: "var(--yellow)" }} />
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                   Claude is reading your resume and generating a prep pack for {job.company}…
                 </p>
               </div>
-              {/* Skeleton rows */}
-              {[1,2,3].map(i => (
+              {[1, 2, 3].map(i => (
                 <div key={i} className="space-y-1.5">
-                  <div className="h-3 bg-elevated rounded animate-pulse w-2/3" />
-                  <div className="h-3 bg-elevated rounded animate-pulse w-full" />
-                  <div className="h-3 bg-elevated rounded animate-pulse w-4/5" />
+                  <div className="h-3 rounded animate-pulse w-2/3" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="h-3 rounded animate-pulse w-full" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="h-3 rounded animate-pulse w-4/5" style={{ background: "var(--bg-elevated)" }} />
                 </div>
               ))}
             </div>
@@ -414,34 +442,32 @@ export default function JobDetailPage() {
 
           {prep && !prepLoading && (
             <div className="space-y-6">
-
-              {/* Interview questions */}
               <div>
                 <p className="label mb-3">Likely Interview Questions</p>
                 <div className="space-y-4">
                   {prep.questions.map((q, i) => (
-                    <div key={i} className="rounded-xl border border-border overflow-hidden">
-                      <div className="bg-elevated px-4 py-2.5 flex items-start gap-2.5">
-                        <span className="text-xs font-bold text-amber-600 mt-0.5 shrink-0">Q{i + 1}</span>
-                        <p className="text-sm font-medium text-ink">{q.question}</p>
+                    <div key={i} className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--bg-border)" }}>
+                      <div className="flex items-start gap-2.5 px-4 py-2.5" style={{ background: "var(--bg-elevated)" }}>
+                        <span className="text-xs font-bold mt-0.5 shrink-0" style={{ color: "var(--yellow)" }}>Q{i + 1}</span>
+                        <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{q.question}</p>
                       </div>
-                      <div className="px-4 py-3 bg-surface">
-                        <p className="text-xs text-ink-muted font-semibold uppercase tracking-wide mb-1.5">Suggested answer</p>
-                        <p className="text-sm text-ink-secondary leading-relaxed">{q.answer}</p>
+                      <div className="px-4 py-3" style={{ background: "var(--bg-surface)" }}>
+                        <p className="text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>Suggested answer</p>
+                        <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>{q.answer}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Research topics */}
               {prep.research.length > 0 && (
                 <div>
                   <p className="label mb-2">Research Before the Interview</p>
                   <ul className="space-y-2">
                     {prep.research.map((item, i) => (
-                      <li key={i} className="flex items-start gap-2.5 text-sm text-ink-secondary">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 shrink-0 mt-0.5">
+                      <li key={i} className="flex items-start gap-2.5 text-sm" style={{ color: "var(--text-secondary)" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                          className="shrink-0 mt-0.5" style={{ color: "var(--yellow)" }}>
                           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
                         </svg>
                         {item}
@@ -451,67 +477,70 @@ export default function JobDetailPage() {
                 </div>
               )}
 
-              {/* Smart question */}
               {prep.smart_question && (
-                <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3.5">
-                  <p className="text-xs font-semibold text-amber-700 mb-1">Smart question to ask the interviewer</p>
-                  <p className="text-sm text-amber-900">&ldquo;{prep.smart_question}&rdquo;</p>
+                <div className="px-4 py-3.5 rounded-xl"
+                  style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                  <p className="text-xs font-semibold mb-1" style={{ color: "var(--yellow)" }}>Smart question to ask the interviewer</p>
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>&ldquo;{prep.smart_question}&rdquo;</p>
                 </div>
               )}
-
             </div>
           )}
 
           {!prep && !prepLoading && (
-            <p className="text-xs text-ink-muted">
-              Prep pack will appear here once generated.
-            </p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Prep pack will appear here once generated.</p>
           )}
         </div>
       )}
 
-      {/* Company Intelligence panel */}
-      <div className="card p-5 mb-4">
+      {/* Company Intelligence */}
+      <div className="rounded-2xl p-5 mb-4" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
         <div className="flex items-center gap-2.5 mb-3">
-          <div className="w-7 h-7 rounded-lg bg-ai-50 flex items-center justify-center shrink-0">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: "rgba(45,212,191,0.1)" }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
               <circle cx="12" cy="12" r="10"/>
               <line x1="2" y1="12" x2="22" y2="12"/>
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
             </svg>
           </div>
           <div>
-            <p className="text-sm font-semibold text-ink">Company Intelligence</p>
-            <p className="text-[11px] text-ink-muted">Live web search · auto-generated</p>
+            <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Company Intelligence</p>
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Live web search · auto-generated</p>
           </div>
         </div>
 
         {newsLoading ? (
           <div className="flex items-center gap-2 py-3">
-            <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
-            <p className="text-xs text-ink-muted">Searching the web for recent news about {job.company}…</p>
+            <div className="w-4 h-4 border-2 rounded-full animate-spin shrink-0"
+              style={{ borderColor: "var(--bg-border)", borderTopColor: "var(--accent)" }} />
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Searching the web for recent news about {job.company}…</p>
           </div>
         ) : news && news.bullets.length > 0 ? (
           <ul className="space-y-2.5">
             {news.bullets.map((bullet, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-ink-secondary">
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-ai-400 shrink-0" />
+              <li key={i} className="flex items-start gap-2.5 text-sm" style={{ color: "var(--text-secondary)" }}>
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "var(--accent)" }} />
                 {bullet}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-ink-muted py-1">No recent news found — TAVILY_API_KEY may not be set.</p>
+          <p className="text-xs py-1" style={{ color: "var(--text-muted)" }}>
+            No recent news found — TAVILY_API_KEY may not be set.
+          </p>
         )}
       </div>
 
       {/* AI Tools — tabbed panel */}
       {(() => {
         const tabs = [
-          { id: "fit",    label: "Fit Analysis" },
-          { id: "search", label: "Agent Search" },
-          { id: "write",  label: "Write for Me" },
-        ] as const;
+          { id: "fit"    as const, label: "Fit Analysis" },
+          { id: "search" as const, label: "Agent Search" },
+          { id: "write"  as const, label: "Write for Me" },
+        ];
         return (
           <AiToolsPanel
             job={job}
@@ -526,11 +555,9 @@ export default function JobDetailPage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Tabbed AI Tools panel — consolidates Fit Analysis / Agent Search / Write
-// ---------------------------------------------------------------------------
 function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, agentLoading, agentError, handleAgentAnalyze, produceResult, produceLoading, produceError, handleAgentProduce }: {
   job: import("@/lib/api").Job;
+  tabs: readonly { id: "fit" | "search" | "write"; label: string }[];
   analysis: import("@/lib/api").JobAnalysis | null; analyzing: boolean; handleAnalyze: () => void;
   agentResult: import("@/lib/api").AgentAnalysis | null; agentLoading: boolean; agentError: string | null; handleAgentAnalyze: () => void;
   produceResult: import("@/lib/api").AgentProduceResult | null; produceLoading: boolean; produceError: string | null; handleAgentProduce: () => void;
@@ -544,18 +571,21 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
   ];
 
   return (
-    <div className="card overflow-hidden">
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
       {/* Tab bar */}
-      <div className="flex border-b border-border bg-base px-1 pt-1">
+      <div className="flex px-1 pt-1" style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--bg-border)" }}>
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-xs font-medium rounded-t-lg transition-colors ${
+            className="px-4 py-2.5 text-xs font-medium rounded-t-lg transition-colors"
+            style={
               tab === t.id
-                ? "bg-surface text-ink border border-b-surface border-border -mb-px"
-                : "text-ink-muted hover:text-ink"
-            }`}
+                ? { background: "var(--bg-surface)", color: "var(--text-primary)", border: "1px solid var(--bg-border)", borderBottom: "1px solid var(--bg-surface)", marginBottom: "-1px" }
+                : { color: "var(--text-muted)" }
+            }
+            onMouseEnter={e => { if (tab !== t.id) (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
+            onMouseLeave={e => { if (tab !== t.id) (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
           >
             {t.label}
           </button>
@@ -563,11 +593,11 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
       </div>
 
       <div className="p-5">
-        {/* Tab: Fit Analysis */}
+        {/* Fit Analysis */}
         {tab === "fit" && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-xs text-ink-muted">Quick fit score · no web search</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Quick fit score · no web search</p>
               {!analyzing && (
                 <button onClick={handleAnalyze} className="btn-primary text-xs py-1.5 px-3">
                   {analysis ? "Re-analyze" : "Analyze"}
@@ -576,20 +606,31 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
             </div>
             {analyzing ? (
               <div className="flex items-center gap-2 py-4">
-                <div className="w-4 h-4 border-2 border-border border-t-accent-600 rounded-full animate-spin shrink-0" />
-                <p className="text-xs text-ink-muted">Scoring your fit…</p>
+                <div className="w-4 h-4 border-2 rounded-full animate-spin shrink-0"
+                  style={{ borderColor: "var(--bg-border)", borderTopColor: "var(--accent)" }} />
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Scoring your fit…</p>
               </div>
             ) : analysis ? (
               <div className="space-y-4 text-sm">
-                <div className="flex items-center gap-6 p-4 rounded-xl bg-base">
-                  <div><p className="label">Fit Score</p><FitScore score={analysis.fit_score} size="md" /></div>
+                <div className="flex items-center gap-6 p-4 rounded-xl" style={{ background: "var(--bg-elevated)" }}>
+                  <div>
+                    <p className="label">Fit Score</p>
+                    <FitScore score={analysis.fit_score} size="md" />
+                  </div>
                   <div>
                     <p className="label">Verdict</p>
-                    <span className={`font-semibold ${analysis.verdict === "APPLY" ? "text-emerald-600" : analysis.verdict === "RED FLAG" ? "text-rose-600" : "text-amber-600"}`}>
+                    <span className="font-semibold" style={{
+                      color: analysis.verdict === "APPLY" ? "var(--green)"
+                        : analysis.verdict === "RED FLAG" ? "var(--red)"
+                        : "var(--yellow)"
+                    }}>
                       {analysis.verdict}
                     </span>
                   </div>
-                  <div><p className="label">Confidence</p><span className="text-ink font-medium">{analysis.confidence}%</span></div>
+                  <div>
+                    <p className="label">Confidence</p>
+                    <span className="font-medium" style={{ color: "var(--text-primary)" }}>{analysis.confidence}%</span>
+                  </div>
                   <div className="ml-auto"><StatusBadge status={job.status} /></div>
                 </div>
                 {analysis.fit_reasons.length > 0 && (
@@ -597,7 +638,9 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                     <p className="label">Why It Fits</p>
                     <ul className="space-y-1.5 mt-1.5">
                       {analysis.fit_reasons.map((r, i) => (
-                        <li key={i} className="flex items-start gap-2 text-ink-secondary"><span className="text-emerald-500 mt-0.5">✓</span>{r}</li>
+                        <li key={i} className="flex items-start gap-2" style={{ color: "var(--text-secondary)" }}>
+                          <span className="mt-0.5" style={{ color: "var(--green)" }}>✓</span>{r}
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -607,7 +650,12 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                     <div>
                       <p className="label mb-1.5">Skills Matched</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {analysis.skills_matched.map((s, i) => <span key={i} className="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-0.5 rounded-full">{s}</span>)}
+                        {analysis.skills_matched.map((s, i) => (
+                          <span key={i} className="text-xs px-2.5 py-0.5 rounded-full"
+                            style={{ background: "rgba(52,211,153,0.1)", color: "var(--green)" }}>
+                            {s}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -615,7 +663,12 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                     <div>
                       <p className="label mb-1.5">Skill Gaps</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {analysis.skill_gaps.map((s, i) => <span key={i} className="bg-rose-50 text-rose-700 text-xs px-2.5 py-0.5 rounded-full">{s}</span>)}
+                        {analysis.skill_gaps.map((s, i) => (
+                          <span key={i} className="text-xs px-2.5 py-0.5 rounded-full"
+                            style={{ background: "rgba(248,113,113,0.1)", color: "var(--red)" }}>
+                            {s}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -623,34 +676,48 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                 {analysis.cover_letter && (
                   <div>
                     <p className="label mb-1.5">Cover Letter</p>
-                    <pre className="text-ink-secondary whitespace-pre-wrap text-xs bg-base border border-border rounded-xl p-4 leading-relaxed font-sans">{analysis.cover_letter}</pre>
+                    <pre className="whitespace-pre-wrap text-xs leading-relaxed p-4 rounded-xl font-sans"
+                      style={{ color: "var(--text-secondary)", background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
+                      {analysis.cover_letter}
+                    </pre>
                   </div>
                 )}
               </div>
             ) : (
-              <p className="text-ink-muted text-sm py-2">Click &quot;Analyze&quot; to get a fit score, skill gaps, and cover letter based on your resume.</p>
+              <p className="text-sm py-2" style={{ color: "var(--text-muted)" }}>
+                Click &quot;Analyze&quot; to get a fit score, skill gaps, and cover letter based on your resume.
+              </p>
             )}
           </div>
         )}
 
-        {/* Tab: Agent Search */}
+        {/* Agent Search */}
         {tab === "search" && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-xs text-ink-muted">Claude searches the web autonomously and returns a contextual analysis</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Claude searches the web autonomously and returns a contextual analysis</p>
               {!agentLoading && (
-                <button onClick={handleAgentAnalyze} className="text-xs px-3 py-1.5 rounded-xl bg-ai-50 text-ai-500 hover:bg-ai-100 font-medium transition-colors">
+                <button
+                  onClick={handleAgentAnalyze}
+                  className="text-xs px-3 py-1.5 rounded-xl font-medium transition-colors"
+                  style={{ background: "rgba(45,212,191,0.1)", color: "var(--accent)", border: "1px solid rgba(45,212,191,0.2)" }}
+                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = "rgba(45,212,191,0.18)"}
+                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = "rgba(45,212,191,0.1)"}
+                >
                   {agentResult ? "Re-run" : "Run Agent"}
                 </button>
               )}
             </div>
             {agentLoading && (
               <div className="flex items-center gap-2 py-4">
-                <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
-                <p className="text-xs text-ink-muted">Claude is reasoning and searching the web…</p>
+                <div className="w-4 h-4 border-2 rounded-full animate-spin shrink-0"
+                  style={{ borderColor: "var(--bg-border)", borderTopColor: "var(--accent)" }} />
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Claude is reasoning and searching the web…</p>
               </div>
             )}
-            {agentError && !agentLoading && <p className="text-xs text-rose-600 py-1">{agentError}</p>}
+            {agentError && !agentLoading && (
+              <p className="text-xs py-1" style={{ color: "var(--red)" }}>{agentError}</p>
+            )}
             {agentResult && !agentLoading && (
               <div className="space-y-4">
                 {agentResult.tool_calls.length > 0 && (
@@ -658,10 +725,16 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                     <p className="label mb-1.5">Searches Claude ran</p>
                     <div className="space-y-1">
                       {agentResult.tool_calls.map((tc, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs text-ink-secondary">
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                          <span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">{tc.query}</span>
-                          <span className="text-ink-muted">{tc.results_count} result{tc.results_count !== 1 ? "s" : ""}</span>
+                        <div key={i} className="flex items-center gap-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                            className="shrink-0" style={{ color: "var(--accent)" }}>
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                          </svg>
+                          <span className="font-mono px-2 py-0.5 rounded-md"
+                            style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
+                            {tc.query}
+                          </span>
+                          <span style={{ color: "var(--text-muted)" }}>{tc.results_count} result{tc.results_count !== 1 ? "s" : ""}</span>
                         </div>
                       ))}
                     </div>
@@ -669,34 +742,45 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                 )}
                 <div>
                   <p className="label mb-1.5">Analysis</p>
-                  <p className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed">{agentResult.analysis}</p>
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: "var(--text-secondary)" }}>{agentResult.analysis}</p>
                 </div>
               </div>
             )}
             {!agentResult && !agentLoading && !agentError && (
-              <p className="text-ink-muted text-sm py-2">Claude will decide what to search, run queries autonomously, and return a research-backed analysis.</p>
+              <p className="text-sm py-2" style={{ color: "var(--text-muted)" }}>
+                Claude will decide what to search, run queries autonomously, and return a research-backed analysis.
+              </p>
             )}
           </div>
         )}
 
-        {/* Tab: Write for Me */}
+        {/* Write for Me */}
         {tab === "write" && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-xs text-ink-muted">Reads your resume + researches {job.company} · writes tailored application materials</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Reads your resume + researches {job.company} · writes tailored application materials</p>
               {!produceLoading && (
-                <button onClick={handleAgentProduce} className="text-xs px-3 py-1.5 rounded-xl bg-ai-50 text-ai-500 hover:bg-ai-100 font-medium transition-colors">
+                <button
+                  onClick={handleAgentProduce}
+                  className="text-xs px-3 py-1.5 rounded-xl font-medium transition-colors"
+                  style={{ background: "rgba(45,212,191,0.1)", color: "var(--accent)", border: "1px solid rgba(45,212,191,0.2)" }}
+                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = "rgba(45,212,191,0.18)"}
+                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = "rgba(45,212,191,0.1)"}
+                >
                   {produceResult ? "Re-write" : "Write for Me"}
                 </button>
               )}
             </div>
             {produceLoading && (
               <div className="flex items-center gap-2 py-4">
-                <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
-                <p className="text-xs text-ink-muted">Claude is reading your profile and researching {job.company}…</p>
+                <div className="w-4 h-4 border-2 rounded-full animate-spin shrink-0"
+                  style={{ borderColor: "var(--bg-border)", borderTopColor: "var(--accent)" }} />
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Claude is reading your profile and researching {job.company}…</p>
               </div>
             )}
-            {produceError && !produceLoading && <p className="text-xs text-rose-600 py-1">{produceError}</p>}
+            {produceError && !produceLoading && (
+              <p className="text-xs py-1" style={{ color: "var(--red)" }}>{produceError}</p>
+            )}
             {produceResult && !produceLoading && (
               <div className="space-y-5">
                 {produceResult.tool_calls.length > 0 && (
@@ -704,11 +788,31 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                     <p className="label mb-1.5">What Claude did</p>
                     <div className="space-y-1.5">
                       {produceResult.tool_calls.map((tc: import("@/lib/api").AgentToolCall, i: number) => (
-                        <div key={i} className="flex items-center gap-2 text-xs text-ink-secondary">
+                        <div key={i} className="flex items-center gap-2 text-xs" style={{ color: "var(--text-secondary)" }}>
                           {tc.tool === "get_candidate_profile" ? (
-                            <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">get_candidate_profile()</span><span className="text-ink-muted">Read your resume</span></>
+                            <>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                                className="shrink-0" style={{ color: "var(--accent)" }}>
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                              </svg>
+                              <span className="font-mono px-2 py-0.5 rounded-md"
+                                style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
+                                get_candidate_profile()
+                              </span>
+                              <span style={{ color: "var(--text-muted)" }}>Read your resume</span>
+                            </>
                           ) : (
-                            <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">{tc.query}</span><span className="text-ink-muted">{tc.results_count} result{tc.results_count !== 1 ? "s" : ""}</span></>
+                            <>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                                className="shrink-0" style={{ color: "var(--accent)" }}>
+                                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                              </svg>
+                              <span className="font-mono px-2 py-0.5 rounded-md"
+                                style={{ background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
+                                {tc.query}
+                              </span>
+                              <span style={{ color: "var(--text-muted)" }}>{tc.results_count} result{tc.results_count !== 1 ? "s" : ""}</span>
+                            </>
                           )}
                         </div>
                       ))}
@@ -718,19 +822,27 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                 {produceResult.resume_summary && (
                   <div>
                     <p className="label mb-1.5">Tailored Resume Summary</p>
-                    <p className="text-sm text-ink-secondary leading-relaxed bg-base border border-border rounded-xl px-4 py-3">{produceResult.resume_summary}</p>
+                    <p className="text-sm leading-relaxed px-4 py-3 rounded-xl"
+                      style={{ color: "var(--text-secondary)", background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
+                      {produceResult.resume_summary}
+                    </p>
                   </div>
                 )}
                 {produceResult.cover_letter && (
                   <div>
                     <p className="label mb-1.5">Cover Letter</p>
-                    <pre className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed bg-base border border-border rounded-xl px-4 py-4 font-sans">{produceResult.cover_letter}</pre>
+                    <pre className="text-sm whitespace-pre-wrap leading-relaxed px-4 py-4 rounded-xl font-sans"
+                      style={{ color: "var(--text-secondary)", background: "var(--bg-elevated)", border: "1px solid var(--bg-border)" }}>
+                      {produceResult.cover_letter}
+                    </pre>
                   </div>
                 )}
               </div>
             )}
             {!produceResult && !produceLoading && !produceError && (
-              <p className="text-ink-muted text-sm py-2">Claude reads your resume, researches {job.company}, then writes a tailored resume summary and 3-paragraph cover letter.</p>
+              <p className="text-sm py-2" style={{ color: "var(--text-muted)" }}>
+                Claude reads your resume, researches {job.company}, then writes a tailored resume summary and 3-paragraph cover letter.
+              </p>
             )}
           </div>
         )}
