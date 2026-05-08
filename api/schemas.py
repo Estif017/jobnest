@@ -28,12 +28,14 @@ class JobCreate(BaseModel):
 
 class JobUpdate(BaseModel):
     """All fields optional — only the ones provided get sent to update_job()."""
-    title:    Optional[str] = None
-    company:  Optional[str] = None
-    location: Optional[str] = None
-    url:      Optional[str] = None
-    status:   Optional[str] = None
-    notes:    Optional[str] = None
+    title:          Optional[str] = None
+    company:        Optional[str] = None
+    location:       Optional[str] = None
+    url:            Optional[str] = None
+    status:         Optional[str] = None
+    notes:          Optional[str] = None
+    date_applied:   Optional[str] = None
+    follow_up_date: Optional[str] = None
 
 
 class ScrapeRequest(BaseModel):
@@ -110,8 +112,20 @@ class OnboardingCompleteRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    user_id:      int
     current:      str
+    new_password: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token:        str
     new_password: str
 
 
@@ -132,6 +146,7 @@ class OnboardingDataRequest(BaseModel):
     linkedin_url:       str = ""
     portfolio_url:      str = ""
     github_username:    str = ""
+    alert_threshold:    int = 7
 
 
 class OnboardingDataResponse(OnboardingDataRequest):
@@ -145,14 +160,17 @@ class OnboardingDataResponse(OnboardingDataRequest):
 
 class JobResponse(BaseModel):
     """Mirrors the Job dataclass exactly."""
-    id:         int
-    title:      str
-    company:    str
-    location:   str
-    url:        str
-    status:     str
-    notes:      str
-    date_added: str
+    id:             int
+    title:          str
+    company:        str
+    location:       str
+    url:            str
+    status:         str
+    notes:          str
+    date_added:     str
+    fit_score:      Optional[int] = None
+    date_applied:   Optional[str] = None
+    follow_up_date: Optional[str] = None
 
 
 class JobAnalysisResponse(BaseModel):
@@ -210,7 +228,10 @@ def job_to_dict(job) -> dict:
         "url":        job.url or "",
         "status":     job.status,
         "notes":      job.notes or "",
-        "date_added": job.date_added,
+        "date_added":     job.date_added,
+        "fit_score":      getattr(job, "fit_score", None),
+        "date_applied":   getattr(job, "date_applied", None),
+        "follow_up_date": getattr(job, "follow_up_date", None),
     }
 
 

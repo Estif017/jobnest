@@ -131,6 +131,16 @@ def init_db() -> None:
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS company_news_cache (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id     INTEGER NOT NULL UNIQUE,
+            company    TEXT NOT NULL,
+            bullets    TEXT NOT NULL DEFAULT '[]',
+            fetched_at TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -173,6 +183,29 @@ def migrate_db() -> None:
 
     # session_id for multi-session coach chat
     _add_col("chat_history", "session_id", "TEXT")
+
+    # email verification + password reset
+    _add_col("users", "is_verified",                "INTEGER NOT NULL DEFAULT 0")
+    _add_col("users", "verification_token",         "TEXT")
+    _add_col("users", "verification_token_expires", "TEXT")
+    _add_col("users", "reset_token",                "TEXT")
+    _add_col("users", "reset_token_expires",        "TEXT")
+
+    # account lockout after repeated failed logins
+    _add_col("users", "failed_login_attempts", "INTEGER NOT NULL DEFAULT 0")
+    _add_col("users", "locked_until",          "TEXT")
+
+    # application tracking dates
+    _add_col("jobs", "date_applied",   "TEXT")
+    _add_col("jobs", "follow_up_date", "TEXT")
+
+    # per-user scheduler alert threshold (minimum fit score, default 7)
+    _add_col("user_profile", "alert_threshold", "INTEGER DEFAULT 7")
+
+    # Existing users (no token) are considered verified; new unverified users will have a token
+    cursor.execute(
+        "UPDATE users SET is_verified = 1 WHERE is_verified = 0 AND verification_token IS NULL"
+    )
 
     # Back-fill existing rows so they belong to user 1
     for tbl in ["jobs", "user_profile", "github_profile", "ai_analyses", "chat_history", "search_sessions"]:

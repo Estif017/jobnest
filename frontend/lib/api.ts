@@ -8,12 +8,44 @@
  */
 
 // ---------------------------------------------------------------------------
-// User ID injection — set once from the session, sent on every request
+// API token — short-lived HS256 JWT issued by /api/auth/token, verified by
+// the backend using the shared NEXTAUTH_SECRET. Cached in memory and
+// refreshed automatically when it has less than 60 s left.
 // ---------------------------------------------------------------------------
-let _userId = "1";
-export function setApiUserId(id: string | undefined) {
-  _userId = id ?? "1";
+
+let _apiToken: string | null = null;
+let _apiTokenExp = 0;
+let _tokenPromise: Promise<string> | null = null;
+
+async function getApiToken(): Promise<string> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (_apiToken && _apiTokenExp - nowSec > 60) return _apiToken;
+  if (_tokenPromise) return _tokenPromise;
+
+  _tokenPromise = (async () => {
+    try {
+      const res = await fetch("/api/auth/token");
+      if (!res.ok) throw new Error("Session expired. Please sign in again.");
+      const { token } = await res.json();
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        _apiTokenExp = payload.exp ?? nowSec + 3600;
+      } catch {
+        _apiTokenExp = nowSec + 3500;
+      }
+      _apiToken = token;
+      return token as string;
+    } finally {
+      _tokenPromise = null;
+    }
+  })();
+
+  return _tokenPromise;
 }
+
+// Keep this export so providers.tsx compiles without changes — it's now a no-op
+// because user identity is carried in the signed Bearer token, not in a header.
+export function setApiUserId(_id: string | undefined) { /* no-op */ }
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -30,6 +62,9 @@ export interface Job {
   status: string;
   notes: string;
   date_added: string;
+  fit_score: number | null;
+  date_applied: string | null;
+  follow_up_date: string | null;
 }
 
 export interface JobAnalysis {
@@ -85,6 +120,8 @@ export interface JobUpdate {
   url?: string;
   status?: string;
   notes?: string;
+  date_applied?: string | null;
+  follow_up_date?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,11 +129,12 @@ export interface JobUpdate {
 // ---------------------------------------------------------------------------
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await getApiToken();
   const { headers: initHeaders, ...rest } = init ?? {};
   const res = await fetch(`${BASE}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      "X-User-Id": _userId,
+      "Authorization": `Bearer ${token}`,
       ...(initHeaders as Record<string, string> | undefined),
     },
     ...rest,
@@ -117,9 +155,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const token = await getApiToken();
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "X-User-Id": _userId },
+    headers: { "Authorization": `Bearer ${token}` },
     body: formData,
   });
   if (!res.ok) {
@@ -187,6 +226,21 @@ export const updateJob = (id: number, data: JobUpdate): Promise<Job> =>
 
 export const deleteJob = (id: number): Promise<void> =>
   apiFetch(`/jobs/${id}`, { method: "DELETE" });
+
+export const exportJobsCsv = async (): Promise<void> => {
+  const token = await getApiToken();
+  const res = await fetch(`${BASE}/jobs/export.csv`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "jobnest-jobs.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
 export const searchJobs = (keyword = "", status = ""): Promise<Job[]> => {
   const params = new URLSearchParams();
@@ -327,6 +381,12 @@ export const markOnboardingComplete = (userId: string): Promise<{ message: strin
     body:   JSON.stringify({ user_id: Number(userId) }),
   });
 
+export const changePassword = (current: string, newPassword: string): Promise<{ message: string }> =>
+  apiFetch("/auth/change-password", {
+    method: "POST",
+    body:   JSON.stringify({ current, new_password: newPassword }),
+  });
+
 // ---------------------------------------------------------------------------
 // Coach chat
 // ---------------------------------------------------------------------------
@@ -345,6 +405,9 @@ export interface ChatSession {
 
 export const fetchCoachHistory = (sessionId?: string): Promise<ChatHistoryMessage[]> =>
   apiFetch(`/coach/history${sessionId ? `?session_id=${sessionId}` : ""}`);
+
+export const deleteCoachSession = (sessionId: string): Promise<void> =>
+  apiFetch(`/coach/sessions/${sessionId}`, { method: "DELETE" });
 
 export const fetchCoachSessions = (): Promise<ChatSession[]> =>
   apiFetch("/coach/sessions");
@@ -393,6 +456,7 @@ export interface OnboardingData {
   linkedin_url:       string;
   portfolio_url:      string;
   github_username:    string;
+  alert_threshold:    number;
   name?:              string;
   skills?:            string[];
 }

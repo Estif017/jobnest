@@ -9,6 +9,8 @@ development. The database is initialized at startup so the API is self-contained
 no separate setup step required. Run with: uvicorn api.main:app --reload --port 8000
 """
 
+import csv
+import io
 import sys
 import os
 import tempfile
@@ -27,12 +29,16 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # work when uvicorn is launched from the project root directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi import File as FastFile
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 
 from database import init_db, migrate_db
 from api.auth_routes import router as auth_router
+from api.auth_middleware import get_authenticated_user
+from api.limiter import limiter
 from db_operations import (
     get_all_jobs,
     get_job_by_id,
@@ -54,6 +60,9 @@ from db_operations import (
     mark_all_notifications_read,
     save_interview_prep,
     load_interview_prep,
+    get_cached_company_news,
+    save_company_news_cache,
+    delete_chat_session,
     VALID_STATUSES,
 )
 from api.scheduler import start_scheduler, hunt_new_jobs
@@ -82,22 +91,32 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],   # Next.js dev server
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Starlette doesn't attach CORS headers to unhandled 500s — this handler fixes that.
+# HTTPException must be re-delegated so FastAPI returns the correct status code
+# (401, 403, 404, etc.) instead of converting everything to 500.
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
+    from fastapi import HTTPException as _HTTPExc
+    from fastapi.exception_handlers import http_exception_handler
+    if isinstance(exc, _HTTPExc):
+        return await http_exception_handler(request, exc)
     from fastapi.responses import JSONResponse
     import traceback
+    traceback.print_exception(type(exc), exc, exc.__traceback__)
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc), "traceback": traceback.format_exc()},
+        content={"detail": "An unexpected error occurred."},
         headers={"Access-Control-Allow-Origin": "http://localhost:3000"},
     )
 
@@ -126,18 +145,9 @@ def shutdown():
         scheduler.shutdown(wait=False)
 
 
-# ---------------------------------------------------------------------------
-# User ID dependency — reads X-User-Id header, defaults to 1 for CLI compat
-# ---------------------------------------------------------------------------
-
-def get_user_id(x_user_id: Optional[str] = Header(None)) -> int:
-    """Reads user id from X-User-Id request header. Defaults to 1 for CLI backward compat."""
-    if x_user_id is None:
-        return 1
-    try:
-        return int(x_user_id)
-    except (ValueError, TypeError):
-        return 1
+# get_authenticated_user is imported from api.auth_middleware — it verifies
+# the HS256 Bearer token issued by Next.js /api/auth/token and returns the
+# user_id from the "sub" claim. Every protected endpoint depends on it.
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +179,7 @@ def scheduler_status():
 
 
 @app.post("/scheduler/run-now")
-def scheduler_run_now():
+def scheduler_run_now(_: int = Depends(get_authenticated_user)):
     """
     Triggers the job hunt immediately without waiting for the 24-hour interval.
     Runs synchronously in the request — expect it to take 30-60 seconds.
@@ -191,7 +201,7 @@ def scheduler_run_now():
 # ---------------------------------------------------------------------------
 
 @app.get("/jobs/{job_id}/interview-prep")
-def jobs_get_interview_prep(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_get_interview_prep(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """Returns the stored interview prep for a job. 404 if not generated yet."""
     prep = load_interview_prep(job_id, user_id)
     if prep is None:
@@ -200,7 +210,7 @@ def jobs_get_interview_prep(job_id: int, user_id: int = Depends(get_user_id)):
 
 
 @app.post("/jobs/{job_id}/interview-prep")
-def jobs_generate_interview_prep(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_generate_interview_prep(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Generates an interview prep pack using Claude.
     Saves the result so subsequent GETs return instantly.
@@ -282,7 +292,7 @@ def jobs_generate_interview_prep(job_id: int, user_id: int = Depends(get_user_id
 # ---------------------------------------------------------------------------
 
 @app.get("/notifications")
-def notifications_list(user_id: int = Depends(get_user_id)):
+def notifications_list(user_id: int = Depends(get_authenticated_user)):
     """Returns recent notifications and the unread count for the current user."""
     items = get_notifications(user_id)
     unread = get_unread_count(user_id)
@@ -290,13 +300,13 @@ def notifications_list(user_id: int = Depends(get_user_id)):
 
 
 @app.post("/notifications/read-all", status_code=204)
-def notifications_read_all(user_id: int = Depends(get_user_id)):
+def notifications_read_all(user_id: int = Depends(get_authenticated_user)):
     """Marks every notification as read for the current user."""
     mark_all_notifications_read(user_id)
 
 
 @app.post("/notifications/{notification_id}/read", status_code=204)
-def notifications_read_one(notification_id: int, user_id: int = Depends(get_user_id)):
+def notifications_read_one(notification_id: int, user_id: int = Depends(get_authenticated_user)):
     """Marks a single notification as read."""
     mark_notification_read(notification_id, user_id)
 
@@ -306,7 +316,7 @@ def notifications_read_one(notification_id: int, user_id: int = Depends(get_user
 # ---------------------------------------------------------------------------
 
 @app.get("/dashboard/stats", response_model=DashboardStats)
-def dashboard_stats(user_id: int = Depends(get_user_id)):
+def dashboard_stats(user_id: int = Depends(get_authenticated_user)):
     """
     Returns aggregated job counts for the dashboard stats row.
     Computes everything from get_all_jobs() — no separate query needed.
@@ -327,7 +337,7 @@ def dashboard_stats(user_id: int = Depends(get_user_id)):
 # ---------------------------------------------------------------------------
 
 @app.get("/jobs/search", response_model=List[JobResponse])
-def jobs_search(keyword: str = "", status: str = "", user_id: int = Depends(get_user_id)):
+def jobs_search(keyword: str = "", status: str = "", user_id: int = Depends(get_authenticated_user)):
     """
     Searches jobs by keyword (title/company/notes) and/or status.
     Both params are optional — omitting both returns all jobs.
@@ -337,13 +347,37 @@ def jobs_search(keyword: str = "", status: str = "", user_id: int = Depends(get_
 
 
 @app.get("/jobs", response_model=List[JobResponse])
-def jobs_list(user_id: int = Depends(get_user_id)):
+def jobs_list(user_id: int = Depends(get_authenticated_user)):
     """Returns all saved jobs ordered by database insertion."""
     return [JobResponse(**job_to_dict(j)) for j in get_all_jobs(user_id)]
 
 
+@app.get("/jobs/export.csv")
+def jobs_export_csv(user_id: int = Depends(get_authenticated_user)):
+    """Downloads all tracked jobs as a CSV file."""
+    jobs = get_all_jobs(user_id)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Title", "Company", "Location", "Status", "URL",
+                     "Fit Score", "Date Added", "Date Applied", "Follow-up Date", "Notes"])
+    for j in jobs:
+        writer.writerow([
+            j.title, j.company, j.location or "", j.status, j.url or "",
+            getattr(j, "fit_score", "") or "",
+            j.date_added,
+            getattr(j, "date_applied", "") or "",
+            getattr(j, "follow_up_date", "") or "",
+            j.notes or "",
+        ])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=jobnest-jobs.csv"},
+    )
+
+
 @app.get("/jobs/{job_id}", response_model=JobResponse)
-def jobs_get(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_get(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """Returns a single job by id. 404 if not found."""
     job = get_job_by_id(job_id, user_id)
     if job is None:
@@ -352,7 +386,7 @@ def jobs_get(job_id: int, user_id: int = Depends(get_user_id)):
 
 
 @app.post("/jobs", response_model=JobResponse, status_code=201)
-def jobs_create(body: JobCreate, user_id: int = Depends(get_user_id)):
+def jobs_create(body: JobCreate, user_id: int = Depends(get_authenticated_user)):
     """Creates a new job. Returns the saved job with its assigned id."""
     job = Job(
         title=body.title,
@@ -376,7 +410,7 @@ def jobs_create(body: JobCreate, user_id: int = Depends(get_user_id)):
 
 
 @app.put("/jobs/{job_id}", response_model=JobResponse)
-def jobs_update(job_id: int, body: JobUpdate, user_id: int = Depends(get_user_id)):
+def jobs_update(job_id: int, body: JobUpdate, user_id: int = Depends(get_authenticated_user)):
     """
     Updates one or more fields of a job. Only non-null fields in the body
     are applied — omitting a field leaves it unchanged in the database.
@@ -395,7 +429,7 @@ def jobs_update(job_id: int, body: JobUpdate, user_id: int = Depends(get_user_id
 
 
 @app.delete("/jobs/{job_id}", status_code=204)
-def jobs_delete(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_delete(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """Permanently deletes a job by id. 404 if the id doesn't exist."""
     success = delete_job(job_id, user_id)
     if not success:
@@ -407,7 +441,7 @@ def jobs_delete(job_id: int, user_id: int = Depends(get_user_id)):
 # ---------------------------------------------------------------------------
 
 @app.get("/jobs/{job_id}/analysis", response_model=JobAnalysisResponse)
-def jobs_get_analysis(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_get_analysis(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """Returns the most recent AI analysis for a job. 404 if none exists yet."""
     analysis = load_analysis(job_id, user_id)
     if analysis is None:
@@ -416,7 +450,7 @@ def jobs_get_analysis(job_id: int, user_id: int = Depends(get_user_id)):
 
 
 @app.post("/jobs/{job_id}/analyze", response_model=JobAnalysisResponse)
-def jobs_analyze(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_analyze(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Runs AI analysis on a job using the stored user profile.
     Fetches the job and profile from the database, calls analyze_job(),
@@ -455,7 +489,7 @@ def jobs_analyze(job_id: int, user_id: int = Depends(get_user_id)):
 # ---------------------------------------------------------------------------
 
 @app.get("/jobs/{job_id}/company-news")
-def company_news(job_id: int, user_id: int = Depends(get_user_id)):
+def company_news(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Searches the web for recent news about the job's company and returns
     a 3-bullet summary generated by Claude. Requires TAVILY_API_KEY and
@@ -470,6 +504,11 @@ def company_news(job_id: int, user_id: int = Depends(get_user_id)):
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
     company = job.company.strip()
+
+    # Return cached bullets if fresh (< 24 h old) — avoids burning Tavily + Claude on every visit
+    cached = get_cached_company_news(job_id)
+    if cached is not None:
+        return {"company": company, "bullets": cached}
 
     # Step 2 — use Tavily to search the web (the "eyes")
     tavily_key = os.getenv("TAVILY_API_KEY")
@@ -522,6 +561,7 @@ def company_news(job_id: int, user_id: int = Depends(get_user_id)):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Claude summarization failed: {e}")
 
+    save_company_news_cache(job_id, company, bullets)
     return {"company": company, "bullets": bullets}
 
 
@@ -541,7 +581,7 @@ def company_news(job_id: int, user_id: int = Depends(get_user_id)):
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs/{job_id}/agent-analyze")
-def jobs_agent_analyze(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_agent_analyze(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Runs an agentic analysis of a job using Claude's Tool Use API.
     Claude decides when to call search_web — the backend never hardcodes it.
@@ -686,7 +726,7 @@ def jobs_agent_analyze(job_id: int, user_id: int = Depends(get_user_id)):
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs/{job_id}/agent-produce")
-def jobs_agent_produce(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_agent_produce(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Agentic writing endpoint: Claude researches the company and reads the
     candidate's profile — deciding on its own when to call each tool — then
@@ -1017,7 +1057,7 @@ def _run_agent_produce(job: Job, user_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs/{job_id}/full-hunt")
-def jobs_full_hunt(job_id: int, user_id: int = Depends(get_user_id)):
+def jobs_full_hunt(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Orchestrator: one endpoint, one goal — help the user land this job.
     Claude decides which specialist tools to call and in what order.
@@ -1216,7 +1256,7 @@ def jobs_full_hunt(job_id: int, user_id: int = Depends(get_user_id)):
 @app.post("/parse-resume")
 async def parse_resume_endpoint(
     file: UploadFile = FastFile(...),
-    user_id: int = Depends(get_user_id),
+    user_id: int = Depends(get_authenticated_user),
 ):
     """Uploads a PDF resume, parses it, saves to SQLite, and returns a summary."""
     if not file.filename.lower().endswith(".pdf"):
@@ -1244,14 +1284,14 @@ async def parse_resume_endpoint(
 # ---------------------------------------------------------------------------
 
 @app.post("/onboarding/save")
-def onboarding_save(body: OnboardingDataRequest, user_id: int = Depends(get_user_id)):
+def onboarding_save(body: OnboardingDataRequest, user_id: int = Depends(get_authenticated_user)):
     """Saves onboarding profile fields for the authenticated user."""
     save_onboarding_data(user_id, body.model_dump())
     return {"message": "Onboarding data saved."}
 
 
 @app.get("/onboarding/data", response_model=OnboardingDataResponse)
-def onboarding_data(user_id: int = Depends(get_user_id)):
+def onboarding_data(user_id: int = Depends(get_authenticated_user)):
     """Returns onboarding profile fields for the authenticated user."""
     data = load_onboarding_data(user_id)
     if data is None:
@@ -1264,7 +1304,7 @@ def onboarding_data(user_id: int = Depends(get_user_id)):
 # ---------------------------------------------------------------------------
 
 @app.post("/scrape", response_model=List[ScoredJobResponse])
-def scrape(body: ScrapeRequest, user_id: int = Depends(get_user_id)):
+def scrape(body: ScrapeRequest, user_id: int = Depends(get_authenticated_user)):
     """
     Searches RemoteOK for live job listings matching the query, saves new ones
     to the tracker, and optionally scores them with AI (score=true).
@@ -1303,7 +1343,7 @@ def scrape(body: ScrapeRequest, user_id: int = Depends(get_user_id)):
 # ---------------------------------------------------------------------------
 
 @app.get("/github", response_model=GitHubProfileResponse)
-def github_get(user_id: int = Depends(get_user_id)):
+def github_get(user_id: int = Depends(get_authenticated_user)):
     """Returns the stored GitHub profile. 404 if none has been fetched yet."""
     profile = load_github_profile(user_id)
     if profile is None:
@@ -1312,7 +1352,7 @@ def github_get(user_id: int = Depends(get_user_id)):
 
 
 @app.post("/github/fetch", response_model=GitHubProfileResponse)
-def github_fetch(body: GitHubFetchRequest, user_id: int = Depends(get_user_id)):
+def github_fetch(body: GitHubFetchRequest, user_id: int = Depends(get_authenticated_user)):
     """
     Fetches a GitHub user's public profile via the GitHub API and saves it.
     Raises 400 if the username doesn't exist or the API call fails.
@@ -1330,19 +1370,25 @@ def github_fetch(body: GitHubFetchRequest, user_id: int = Depends(get_user_id)):
 # ---------------------------------------------------------------------------
 
 @app.get("/coach/sessions", response_model=List[ChatSession])
-def coach_sessions(user_id: int = Depends(get_user_id)):
+def coach_sessions(user_id: int = Depends(get_authenticated_user)):
     """Returns all distinct chat sessions for this user, newest first."""
     return [ChatSession(**s) for s in get_chat_sessions(user_id=user_id)]
 
 
+@app.delete("/coach/sessions/{session_id}", status_code=204)
+def delete_coach_session(session_id: str, user_id: int = Depends(get_authenticated_user)):
+    """Deletes all messages in a session for this user."""
+    delete_chat_session(session_id=session_id, user_id=user_id)
+
+
 @app.get("/coach/history", response_model=List[ChatMessage])
-def coach_history(session_id: Optional[str] = None, user_id: int = Depends(get_user_id)):
+def coach_history(session_id: Optional[str] = None, user_id: int = Depends(get_authenticated_user)):
     """Returns up to 50 messages for a session (or all recent if no session given), oldest first."""
     return [ChatMessage(**m) for m in load_chat_history(limit=50, user_id=user_id, session_id=session_id)]
 
 
 @app.post("/coach/chat", response_model=CoachChatResponse)
-def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_user_id)):
+def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_authenticated_user)):
     """
     Sends a user message to Claude and returns a career coaching reply.
     Saves both the user message and the reply to chat_history.

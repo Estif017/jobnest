@@ -1,17 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { scrapeJobs, ScoredJob } from "@/lib/api";
 import JobCard from "@/components/JobCard";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 
+const CACHE_KEY = "scan_results_cache";
+
+function loadCache(): { query: string; location: string; results: ScoredJob[] } | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 export default function ScanPage() {
-  const [query, setQuery] = useState("");
-  const [location, setLocation] = useState("");
-  const [results, setResults] = useState<ScoredJob[] | null>(null);
+  const cached = loadCache();
+  const [query, setQuery] = useState(cached?.query ?? "");
+  const [location, setLocation] = useState(cached?.location ?? "");
+  const [results, setResults] = useState<ScoredJob[] | null>(cached?.results ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (results && results.length > 0) {
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ query, location, results }));
+      } catch { /* quota exceeded — ignore */ }
+    }
+  }, [results, query, location]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,6 +37,7 @@ export default function ScanPage() {
     setLoading(true);
     setError("");
     setResults(null);
+    try { sessionStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
     try {
       const data = await scrapeJobs(query, location);
       setResults(data);

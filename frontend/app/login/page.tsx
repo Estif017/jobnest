@@ -8,6 +8,7 @@ import { DM_Sans } from "next/font/google";
 
 const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 
+const API      = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
 
 // Map NextAuth error codes to human-readable messages
@@ -40,6 +41,7 @@ function LoginContent() {
   const [password,     setPassword]     = useState("");
   const [pwTouched,    setPwTouched]    = useState(false);
   const [error,        setError]        = useState(oauthError(errorParam));
+  const [unverified,   setUnverified]   = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [providers,    setProviders]    = useState<Record<string, { id: string }> | null>(null);
 
@@ -57,7 +59,41 @@ function LoginContent() {
     if (!emailValid || !password) return;
 
     setError("");
+    setUnverified(false);
     setLoading(true);
+
+    // Pre-check with the backend to surface 403 (unverified) before calling signIn
+    try {
+      const precheck = await fetch(`${API}/auth/login`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email, password }),
+        signal:  AbortSignal.timeout(8000),
+      });
+      if (precheck.status === 403) {
+        setUnverified(true);
+        setLoading(false);
+        return;
+      }
+      if (precheck.status === 423) {
+        const body = await precheck.json().catch(() => ({}));
+        setError(body.detail ?? "Account locked. Try again later.");
+        setLoading(false);
+        return;
+      }
+      if (!precheck.ok) {
+        setError("Invalid email or password.");
+        setLoading(false);
+        return;
+      }
+    } catch (err: unknown) {
+      const isTimeout = err instanceof Error && err.name === "TimeoutError";
+      setError(isTimeout
+        ? "Request timed out. The backend may be overloaded — try again."
+        : "Could not reach the server. Is the backend running?");
+      setLoading(false);
+      return;
+    }
 
     const result = await signIn("credentials", { email, password, redirect: false });
     setLoading(false);
@@ -101,6 +137,30 @@ function LoginContent() {
             </p>
           )}
 
+          {unverified && (
+            <div className="text-yellow-300 text-sm bg-yellow-950/40 border border-yellow-800/40 rounded-xl px-4 py-3 space-y-1">
+              <p className="font-medium">Please verify your email before signing in.</p>
+              <p className="text-xs text-yellow-400/80">
+                Check your inbox for the verification link.{" "}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await fetch(`${API}/auth/resend-verification`, {
+                      method:  "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body:    JSON.stringify({ email }),
+                    }).catch(() => {});
+                    setUnverified(false);
+                    setError("Verification email resent. Check your inbox.");
+                  }}
+                  className="underline hover:text-yellow-200 transition-colors"
+                >
+                  Resend verification email
+                </button>
+              </p>
+            </div>
+          )}
+
           {/* Email */}
           <div className="space-y-1">
             <label className="auth-label">Email address</label>
@@ -119,11 +179,19 @@ function LoginContent() {
 
           {/* Password */}
           <div className="space-y-1">
-            <label className="auth-label">Password</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="auth-label" style={{ marginBottom: 0 }}>Password</label>
+              <Link
+                href="/auth/forgot-password"
+                className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <input
               type="password"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setError(""); }}
+              onChange={(e) => { setPassword(e.target.value); setError(""); setUnverified(false); }}
               onBlur={() => setPwTouched(true)}
               onKeyDown={handleKeyDown}
               autoComplete="current-password"

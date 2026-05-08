@@ -51,8 +51,13 @@ def get_all_jobs(user_id: int = 1) -> List[Job]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM jobs WHERE COALESCE(user_id, 1) = ?", (user_id,))
-    rows = cursor.fetchall()    # Retrieves all rows at once as a list
+    cursor.execute("""
+        SELECT j.*,
+               (SELECT fit_score FROM ai_analyses WHERE job_id = j.id ORDER BY id DESC LIMIT 1) AS fit_score
+        FROM jobs j
+        WHERE COALESCE(j.user_id, 1) = ?
+    """, (user_id,))
+    rows = cursor.fetchall()
     conn.close()
 
     return [
@@ -64,9 +69,12 @@ def get_all_jobs(user_id: int = 1) -> List[Job]:
             url=row["url"],
             status=row["status"],
             notes=row["notes"],
-            date_added=row["date_added"]
+            date_added=row["date_added"],
+            fit_score=row["fit_score"],
+            date_applied=row["date_applied"],
+            follow_up_date=row["follow_up_date"],
         )
-        for row in rows     # List comprehension — builds a Job object for each row in one clean expression
+        for row in rows
     ]
 
 
@@ -78,12 +86,17 @@ def get_job_by_id(job_id: int, user_id: int = 1) -> Optional[Job]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM jobs WHERE id = ? AND COALESCE(user_id, 1) = ?", (job_id, user_id))
-    row = cursor.fetchone()     # Fetches just one row — None if nothing matched
+    cursor.execute("""
+        SELECT j.*,
+               (SELECT fit_score FROM ai_analyses WHERE job_id = j.id ORDER BY id DESC LIMIT 1) AS fit_score
+        FROM jobs j
+        WHERE j.id = ? AND COALESCE(j.user_id, 1) = ?
+    """, (job_id, user_id))
+    row = cursor.fetchone()
     conn.close()
 
     if row is None:
-        return None             # No job found — tell the caller explicitly
+        return None
 
     return Job(
         id=row["id"],
@@ -93,7 +106,10 @@ def get_job_by_id(job_id: int, user_id: int = 1) -> Optional[Job]:
         url=row["url"],
         status=row["status"],
         notes=row["notes"],
-        date_added=row["date_added"]
+        date_added=row["date_added"],
+        fit_score=row["fit_score"],
+        date_applied=row["date_applied"],
+        follow_up_date=row["follow_up_date"],
     )
 
 
@@ -180,16 +196,21 @@ def search_jobs(keyword: str = "", status: str = "", user_id: int = 1) -> List[J
     conn = get_connection()
     cursor = conn.cursor()
 
-    query = "SELECT * FROM jobs WHERE COALESCE(user_id, 1) = ?"      # Filter by user first
+    query = """
+        SELECT j.*,
+               (SELECT fit_score FROM ai_analyses WHERE job_id = j.id ORDER BY id DESC LIMIT 1) AS fit_score
+        FROM jobs j
+        WHERE COALESCE(j.user_id, 1) = ?
+    """
     params: list = [user_id]
 
     if keyword:
-        query += " AND (title LIKE ? OR company LIKE ? OR notes LIKE ?)"
-        like = f"%{keyword}%"                   # % is SQL wildcard — matches anything before or after the keyword
+        query += " AND (j.title LIKE ? OR j.company LIKE ? OR j.notes LIKE ?)"
+        like = f"%{keyword}%"
         params.extend([like, like, like])
 
     if status:
-        query += " AND status = ?"
+        query += " AND j.status = ?"
         params.append(status)
 
     cursor.execute(query, params)
@@ -205,7 +226,10 @@ def search_jobs(keyword: str = "", status: str = "", user_id: int = 1) -> List[J
             url=row["url"],
             status=row["status"],
             notes=row["notes"],
-            date_added=row["date_added"]
+            date_added=row["date_added"],
+            fit_score=row["fit_score"],
+            date_applied=row["date_applied"],
+            follow_up_date=row["follow_up_date"],
         )
         for row in rows
     ]
@@ -566,6 +590,18 @@ def get_chat_sessions(user_id: int = 1) -> List[dict]:
     return sessions
 
 
+def delete_chat_session(session_id: str, user_id: int = 1) -> None:
+    """Deletes all chat_history rows for a given session_id and user."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM chat_history WHERE session_id = ? AND COALESCE(user_id, 1) = ?",
+        (session_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Onboarding data persistence
 # ---------------------------------------------------------------------------
@@ -600,6 +636,7 @@ def save_onboarding_data(user_id: int, data: dict) -> bool:
         data.get("linkedin_url", ""),
         data.get("portfolio_url", ""),
         data.get("github_username", ""),
+        int(data.get("alert_threshold", 7) or 7),
         updated_at,
     )
 
@@ -611,7 +648,7 @@ def save_onboarding_data(user_id: int, data: dict) -> bool:
                     employment_types=?, work_model=?, current_location=?, open_to_relocation=?,
                     salary_min=?, salary_max=?, salary_currency=?, years_experience=?,
                     top_skills_manual=?, certifications=?, linkedin_url=?, portfolio_url=?,
-                    github_username=?, updated_at=?
+                    github_username=?, alert_threshold=?, updated_at=?
                 WHERE COALESCE(user_id, 1) = ?
             """, fields + (user_id,))
         else:
@@ -621,8 +658,9 @@ def save_onboarding_data(user_id: int, data: dict) -> bool:
                      user_id, target_role, target_industries, seniority_level,
                      employment_types, work_model, current_location, open_to_relocation,
                      salary_min, salary_max, salary_currency, years_experience,
-                     top_skills_manual, certifications, linkedin_url, portfolio_url, github_username)
-                VALUES ('', '[]', '[]', '[]', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     top_skills_manual, certifications, linkedin_url, portfolio_url,
+                     github_username, alert_threshold)
+                VALUES ('', '[]', '[]', '[]', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (updated_at,) + fields)
         conn.commit()
         return True
@@ -668,6 +706,7 @@ def load_onboarding_data(user_id: int) -> Optional[dict]:
         "linkedin_url":       row["linkedin_url"] or "",
         "portfolio_url":      row["portfolio_url"] or "",
         "github_username":    row["github_username"] or "",
+        "alert_threshold":    row["alert_threshold"] if row["alert_threshold"] is not None else 7,
         "name":               row["name"] or "",
         "skills":             _jload(row["skills"]),
     }
@@ -677,26 +716,100 @@ def load_onboarding_data(user_id: int) -> Optional[dict]:
 # User account persistence
 # ---------------------------------------------------------------------------
 
-def create_user(email: str, password_hash: Optional[str], provider: str = "email") -> int:
+def create_user(
+    email: str,
+    password_hash: Optional[str],
+    provider: str = "email",
+    is_verified: bool = False,
+    verification_token: Optional[str] = None,
+    verification_token_expires: Optional[str] = None,
+) -> int:
     """
     Creates a new user. Returns the new user's id.
     Raises sqlite3.IntegrityError if email already exists.
-    password_hash is None for Google OAuth users.
+    password_hash is None for OAuth users. OAuth users pass is_verified=True.
     """
     conn = get_connection()
     cursor = conn.cursor()
     created_at = datetime.now().isoformat()
     try:
         cursor.execute("""
-            INSERT INTO users (email, password_hash, provider, created_at)
-            VALUES (?, ?, ?, ?)
-        """, (email, password_hash, provider, created_at))
+            INSERT INTO users (email, password_hash, provider, created_at,
+                               is_verified, verification_token, verification_token_expires)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (email, password_hash, provider, created_at,
+              1 if is_verified else 0, verification_token, verification_token_expires))
         conn.commit()
         return cursor.lastrowid
     except sqlite3.IntegrityError:
         raise   # Caller handles duplicate email
     finally:
         conn.close()
+
+
+def set_verification_token(user_id: int, token: str, expires: str) -> None:
+    """Saves a verification token + expiry for a user."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET verification_token = ?, verification_token_expires = ? WHERE id = ?",
+        (token, expires, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_by_verification_token(token: str) -> Optional[dict]:
+    """Returns the user row if the token exists, or None."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE verification_token = ?", (token,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def mark_user_verified(user_id: int) -> None:
+    """Sets is_verified=1. Keeps the token so a second hit on the same link still returns success."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def set_reset_token(user_id: int, token: str, expires: str) -> None:
+    """Saves a password-reset token + expiry for a user."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?",
+        (token, expires, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_by_reset_token(token: str) -> Optional[dict]:
+    """Returns the user row if the reset token exists, or None."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE reset_token = ?", (token,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def complete_password_reset(user_id: int, new_hash: str) -> None:
+    """Sets the new password hash and clears the reset token."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?",
+        (new_hash, user_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
@@ -893,3 +1006,90 @@ def set_onboarding_complete(user_id: int) -> bool:
         return False
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Account lockout helpers
+# ---------------------------------------------------------------------------
+
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_MINUTES     = 15
+
+
+def record_failed_login(user_id: int) -> None:
+    """
+    Increments the failed attempt counter. When it hits MAX_FAILED_ATTEMPTS,
+    sets locked_until to 15 minutes from now.
+    """
+    from datetime import datetime, timedelta
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE id = ?",
+        (user_id,),
+    )
+    cursor.execute("SELECT failed_login_attempts FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row and row["failed_login_attempts"] >= MAX_FAILED_ATTEMPTS:
+        locked_until = (datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
+        cursor.execute(
+            "UPDATE users SET locked_until = ? WHERE id = ?",
+            (locked_until, user_id),
+        )
+    conn.commit()
+    conn.close()
+
+
+def reset_failed_logins(user_id: int) -> None:
+    """Clears the failed attempt counter and any lockout after a successful login."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?",
+        (user_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Company news cache
+# ---------------------------------------------------------------------------
+
+_NEWS_TTL_HOURS = 24
+
+
+def get_cached_company_news(job_id: int) -> Optional[List[str]]:
+    """Returns cached bullets if present and younger than 24 hours, otherwise None."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT bullets, fetched_at FROM company_news_cache WHERE job_id = ?", (job_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if row is None:
+        return None
+
+    age_hours = (datetime.utcnow() - datetime.fromisoformat(row["fetched_at"])).total_seconds() / 3600
+    if age_hours > _NEWS_TTL_HOURS:
+        return None
+
+    return json.loads(row["bullets"])
+
+
+def save_company_news_cache(job_id: int, company: str, bullets: List[str]) -> None:
+    """Upserts the company news cache for a job."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO company_news_cache (job_id, company, bullets, fetched_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(job_id) DO UPDATE SET
+            company    = excluded.company,
+            bullets    = excluded.bullets,
+            fetched_at = excluded.fetched_at
+    """, (job_id, company, json.dumps(bullets), datetime.utcnow().isoformat()))
+    conn.commit()
+    conn.close()

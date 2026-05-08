@@ -6,10 +6,11 @@ import {
   fetchJob, fetchAnalysis, analyzeJob, updateJob, deleteJob,
   fetchCompanyNews, agentAnalyzeJob, agentProduceJob, fullHuntJob,
   fetchInterviewPrep, generateInterviewPrep,
-  Job, JobAnalysis, CompanyNews, AgentAnalysis, AgentProduceResult, AgentToolCall, InterviewPrep,
+  Job, JobAnalysis, CompanyNews, AgentAnalysis, AgentProduceResult, InterviewPrep,
   FullHuntResult,
 } from "@/lib/api";
 import Header from "@/components/Header";
+import ConfirmButton from "@/components/ConfirmButton";
 import FitScore from "@/components/FitScore";
 import StatusBadge from "@/components/StatusBadge";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -77,18 +78,19 @@ export default function JobDetailPage() {
     if (!job) return;
     const updated = await updateJob(jobId, { status: newStatus });
     setJob(updated);
-    // Auto-generate prep the moment status flips to Interviewing
+    // When flipping to Interviewing: check if prep exists first, generate only if not
     if (newStatus === "Interviewing" && !prep && !prepLoading) {
       setPrepLoading(true);
-      generateInterviewPrep(jobId)
+      fetchInterviewPrep(jobId)
         .then(setPrep)
-        .catch(() => {})
+        .catch(() =>
+          generateInterviewPrep(jobId).then(setPrep).catch(() => {})
+        )
         .finally(() => setPrepLoading(false));
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm("Delete this job?")) return;
     await deleteJob(jobId);
     router.push("/jobs");
   };
@@ -152,12 +154,10 @@ export default function JobDetailPage() {
         title={job.title}
         subtitle={job.company}
         actions={
-          <button
-            onClick={handleDelete}
+          <ConfirmButton
+            onConfirm={handleDelete}
             className="text-sm px-4 py-2 rounded-xl text-rose-600 hover:bg-rose-50 transition-colors"
-          >
-            Delete
-          </button>
+          />
         }
       />
 
@@ -187,6 +187,24 @@ export default function JobDetailPage() {
           <div>
             <p className="label">Date Added</p>
             <p className="text-ink-secondary">{job.date_added}</p>
+          </div>
+          <div>
+            <p className="label">Date Applied</p>
+            <input
+              type="date"
+              value={job.date_applied ?? ""}
+              onChange={(e) => updateJob(jobId, { date_applied: e.target.value || null }).then(setJob)}
+              className="input text-xs py-1.5"
+            />
+          </div>
+          <div>
+            <p className="label">Follow-up Date</p>
+            <input
+              type="date"
+              value={job.follow_up_date ?? ""}
+              onChange={(e) => updateJob(jobId, { follow_up_date: e.target.value || null }).then(setJob)}
+              className="input text-xs py-1.5"
+            />
           </div>
           {job.url && (
             <div className="col-span-2">
@@ -487,250 +505,234 @@ export default function JobDetailPage() {
         )}
       </div>
 
-      {/* Agent Analysis panel */}
-      <div className="card p-5 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-ai-50 flex items-center justify-center shrink-0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
-                <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/>
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-ink">Agent Analysis</p>
-              <p className="text-[11px] text-ink-muted">Claude decides what to search · tool-use</p>
-            </div>
-          </div>
-          {!agentLoading && (
-            <button onClick={handleAgentAnalyze} className="text-xs px-3 py-1.5 rounded-xl bg-ai-50 text-ai-500 hover:bg-ai-100 font-medium transition-colors">
-              {agentResult ? "Re-run Agent" : "Run Agent"}
-            </button>
-          )}
-        </div>
+      {/* AI Tools — tabbed panel */}
+      {(() => {
+        const tabs = [
+          { id: "fit",    label: "Fit Analysis" },
+          { id: "search", label: "Agent Search" },
+          { id: "write",  label: "Write for Me" },
+        ] as const;
+        return (
+          <AiToolsPanel
+            job={job}
+            tabs={tabs}
+            analysis={analysis} analyzing={analyzing} handleAnalyze={handleAnalyze}
+            agentResult={agentResult} agentLoading={agentLoading} agentError={agentError} handleAgentAnalyze={handleAgentAnalyze}
+            produceResult={produceResult} produceLoading={produceLoading} produceError={produceError} handleAgentProduce={handleAgentProduce}
+          />
+        );
+      })()}
+    </div>
+  );
+}
 
-        {agentLoading && (
-          <div className="flex items-center gap-2 py-2">
-            <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
-            <p className="text-xs text-ink-muted">Claude is reasoning and searching the web…</p>
-          </div>
-        )}
+// ---------------------------------------------------------------------------
+// Tabbed AI Tools panel — consolidates Fit Analysis / Agent Search / Write
+// ---------------------------------------------------------------------------
+function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, agentLoading, agentError, handleAgentAnalyze, produceResult, produceLoading, produceError, handleAgentProduce }: {
+  job: import("@/lib/api").Job;
+  analysis: import("@/lib/api").JobAnalysis | null; analyzing: boolean; handleAnalyze: () => void;
+  agentResult: import("@/lib/api").AgentAnalysis | null; agentLoading: boolean; agentError: string | null; handleAgentAnalyze: () => void;
+  produceResult: import("@/lib/api").AgentProduceResult | null; produceLoading: boolean; produceError: string | null; handleAgentProduce: () => void;
+}) {
+  const [tab, setTab] = useState<"fit" | "search" | "write">("fit");
 
-        {agentError && !agentLoading && (
-          <p className="text-xs text-rose-600 py-1">{agentError}</p>
-        )}
+  const tabs = [
+    { id: "fit"    as const, label: "Fit Analysis" },
+    { id: "search" as const, label: "Agent Search" },
+    { id: "write"  as const, label: "Write for Me" },
+  ];
 
-        {agentResult && !agentLoading && (
-          <div className="space-y-4">
-            {agentResult.tool_calls.length > 0 && (
-              <div>
-                <p className="label mb-1.5">Searches Claude ran</p>
-                <div className="space-y-1">
-                  {agentResult.tool_calls.map((tc, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs text-ink-secondary">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0">
-                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                      </svg>
-                      <span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">{tc.query}</span>
-                      <span className="text-ink-muted">{tc.results_count} result{tc.results_count !== 1 ? "s" : ""}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div>
-              <p className="label mb-1.5">Analysis</p>
-              <p className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed">{agentResult.analysis}</p>
-            </div>
-          </div>
-        )}
-
-        {!agentResult && !agentLoading && !agentError && (
-          <p className="text-xs text-ink-muted py-1">
-            Click &quot;Run Agent&quot; — Claude will search the web on its own and return a contextual analysis.
-          </p>
-        )}
+  return (
+    <div className="card overflow-hidden">
+      {/* Tab bar */}
+      <div className="flex border-b border-border bg-base px-1 pt-1">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2.5 text-xs font-medium rounded-t-lg transition-colors ${
+              tab === t.id
+                ? "bg-surface text-ink border border-b-surface border-border -mb-px"
+                : "text-ink-muted hover:text-ink"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Agent Write panel */}
-      <div className="card p-5 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-ai-50 flex items-center justify-center shrink-0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
-                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-              </svg>
+      <div className="p-5">
+        {/* Tab: Fit Analysis */}
+        {tab === "fit" && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs text-ink-muted">Quick fit score · no web search</p>
+              {!analyzing && (
+                <button onClick={handleAnalyze} className="btn-primary text-xs py-1.5 px-3">
+                  {analysis ? "Re-analyze" : "Analyze"}
+                </button>
+              )}
             </div>
-            <div>
-              <p className="text-sm font-semibold text-ink">Agent Write</p>
-              <p className="text-[11px] text-ink-muted">Resume summary + cover letter · tool-use</p>
-            </div>
-          </div>
-          {!produceLoading && (
-            <button onClick={handleAgentProduce} className="text-xs px-3 py-1.5 rounded-xl bg-ai-50 text-ai-500 hover:bg-ai-100 font-medium transition-colors">
-              {produceResult ? "Re-write" : "Write for Me"}
-            </button>
-          )}
-        </div>
-
-        {produceLoading && (
-          <div className="flex items-center gap-2 py-3">
-            <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
-            <p className="text-xs text-ink-muted">Claude is reading your profile and researching {job.company}…</p>
+            {analyzing ? (
+              <div className="flex items-center gap-2 py-4">
+                <div className="w-4 h-4 border-2 border-border border-t-accent-600 rounded-full animate-spin shrink-0" />
+                <p className="text-xs text-ink-muted">Scoring your fit…</p>
+              </div>
+            ) : analysis ? (
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center gap-6 p-4 rounded-xl bg-base">
+                  <div><p className="label">Fit Score</p><FitScore score={analysis.fit_score} size="md" /></div>
+                  <div>
+                    <p className="label">Verdict</p>
+                    <span className={`font-semibold ${analysis.verdict === "APPLY" ? "text-emerald-600" : analysis.verdict === "RED FLAG" ? "text-rose-600" : "text-amber-600"}`}>
+                      {analysis.verdict}
+                    </span>
+                  </div>
+                  <div><p className="label">Confidence</p><span className="text-ink font-medium">{analysis.confidence}%</span></div>
+                  <div className="ml-auto"><StatusBadge status={job.status} /></div>
+                </div>
+                {analysis.fit_reasons.length > 0 && (
+                  <div>
+                    <p className="label">Why It Fits</p>
+                    <ul className="space-y-1.5 mt-1.5">
+                      {analysis.fit_reasons.map((r, i) => (
+                        <li key={i} className="flex items-start gap-2 text-ink-secondary"><span className="text-emerald-500 mt-0.5">✓</span>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  {analysis.skills_matched.length > 0 && (
+                    <div>
+                      <p className="label mb-1.5">Skills Matched</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {analysis.skills_matched.map((s, i) => <span key={i} className="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-0.5 rounded-full">{s}</span>)}
+                      </div>
+                    </div>
+                  )}
+                  {analysis.skill_gaps.length > 0 && (
+                    <div>
+                      <p className="label mb-1.5">Skill Gaps</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {analysis.skill_gaps.map((s, i) => <span key={i} className="bg-rose-50 text-rose-700 text-xs px-2.5 py-0.5 rounded-full">{s}</span>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {analysis.cover_letter && (
+                  <div>
+                    <p className="label mb-1.5">Cover Letter</p>
+                    <pre className="text-ink-secondary whitespace-pre-wrap text-xs bg-base border border-border rounded-xl p-4 leading-relaxed font-sans">{analysis.cover_letter}</pre>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-ink-muted text-sm py-2">Click &quot;Analyze&quot; to get a fit score, skill gaps, and cover letter based on your resume.</p>
+            )}
           </div>
         )}
 
-        {produceError && !produceLoading && (
-          <p className="text-xs text-rose-600 py-1">{produceError}</p>
-        )}
-
-        {produceResult && !produceLoading && (
-          <div className="space-y-5">
-            {produceResult.tool_calls.length > 0 && (
-              <div>
-                <p className="label mb-1.5">What Claude did</p>
-                <div className="space-y-1.5">
-                  {produceResult.tool_calls.map((tc: AgentToolCall, i: number) => (
-                    <div key={i} className="flex items-center gap-2 text-xs text-ink-secondary">
-                      {tc.tool === "get_candidate_profile" ? (
-                        <>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                          </svg>
-                          <span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">get_candidate_profile()</span>
-                          <span className="text-ink-muted">Read your resume</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0">
-                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                          </svg>
+        {/* Tab: Agent Search */}
+        {tab === "search" && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs text-ink-muted">Claude searches the web autonomously and returns a contextual analysis</p>
+              {!agentLoading && (
+                <button onClick={handleAgentAnalyze} className="text-xs px-3 py-1.5 rounded-xl bg-ai-50 text-ai-500 hover:bg-ai-100 font-medium transition-colors">
+                  {agentResult ? "Re-run" : "Run Agent"}
+                </button>
+              )}
+            </div>
+            {agentLoading && (
+              <div className="flex items-center gap-2 py-4">
+                <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
+                <p className="text-xs text-ink-muted">Claude is reasoning and searching the web…</p>
+              </div>
+            )}
+            {agentError && !agentLoading && <p className="text-xs text-rose-600 py-1">{agentError}</p>}
+            {agentResult && !agentLoading && (
+              <div className="space-y-4">
+                {agentResult.tool_calls.length > 0 && (
+                  <div>
+                    <p className="label mb-1.5">Searches Claude ran</p>
+                    <div className="space-y-1">
+                      {agentResult.tool_calls.map((tc, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs text-ink-secondary">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                           <span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">{tc.query}</span>
                           <span className="text-ink-muted">{tc.results_count} result{tc.results_count !== 1 ? "s" : ""}</span>
-                        </>
-                      )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                )}
+                <div>
+                  <p className="label mb-1.5">Analysis</p>
+                  <p className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed">{agentResult.analysis}</p>
                 </div>
               </div>
             )}
-            {produceResult.resume_summary && (
-              <div>
-                <p className="label mb-1.5">Tailored Resume Summary</p>
-                <p className="text-sm text-ink-secondary leading-relaxed bg-base border border-border rounded-xl px-4 py-3">
-                  {produceResult.resume_summary}
-                </p>
-              </div>
-            )}
-            {produceResult.cover_letter && (
-              <div>
-                <p className="label mb-1.5">Cover Letter</p>
-                <pre className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed bg-base border border-border rounded-xl px-4 py-4 font-sans">
-                  {produceResult.cover_letter}
-                </pre>
-              </div>
+            {!agentResult && !agentLoading && !agentError && (
+              <p className="text-ink-muted text-sm py-2">Claude will decide what to search, run queries autonomously, and return a research-backed analysis.</p>
             )}
           </div>
         )}
 
-        {!produceResult && !produceLoading && !produceError && (
-          <p className="text-xs text-ink-muted py-1">
-            Click &quot;Write for Me&quot; — Claude will read your resume and research {job.company}, then write a tailored summary and cover letter.
-          </p>
-        )}
-      </div>
-
-      {/* AI Analysis panel */}
-      <div className="card p-6">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-accent-50 flex items-center justify-center shrink-0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent-600">
-                <path d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-              </svg>
+        {/* Tab: Write for Me */}
+        {tab === "write" && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs text-ink-muted">Reads your resume + researches {job.company} · writes tailored application materials</p>
+              {!produceLoading && (
+                <button onClick={handleAgentProduce} className="text-xs px-3 py-1.5 rounded-xl bg-ai-50 text-ai-500 hover:bg-ai-100 font-medium transition-colors">
+                  {produceResult ? "Re-write" : "Write for Me"}
+                </button>
+              )}
             </div>
-            <p className="text-sm font-semibold text-ink">AI Analysis</p>
-          </div>
-          {!analyzing && (
-            <button onClick={handleAnalyze} className="btn-primary text-xs py-1.5 px-3">
-              {analysis ? "Re-analyze" : "Analyze with AI"}
-            </button>
-          )}
-        </div>
-
-        {analyzing ? (
-          <LoadingSpinner />
-        ) : analysis ? (
-          <div className="space-y-5 text-sm">
-            <div className="flex items-center gap-6 p-4 rounded-xl bg-base">
-              <div>
-                <p className="label">Fit Score</p>
-                <FitScore score={analysis.fit_score} size="md" />
-              </div>
-              <div>
-                <p className="label">Verdict</p>
-                <span className={`font-semibold text-sm ${
-                  analysis.verdict === "APPLY"     ? "text-emerald-600"
-                  : analysis.verdict === "RED FLAG" ? "text-rose-600"
-                  : "text-amber-600"
-                }`}>{analysis.verdict}</span>
-              </div>
-              <div>
-                <p className="label">Confidence</p>
-                <span className="text-ink font-medium">{analysis.confidence}%</span>
-              </div>
-              <div className="ml-auto">
-                <StatusBadge status={job.status} />
-              </div>
-            </div>
-
-            {analysis.fit_reasons.length > 0 && (
-              <div>
-                <p className="label">Why It Fits</p>
-                <ul className="space-y-1.5">
-                  {analysis.fit_reasons.map((r, i) => (
-                    <li key={i} className="flex items-start gap-2 text-ink-secondary text-sm">
-                      <span className="text-emerald-500 mt-0.5">✓</span>{r}
-                    </li>
-                  ))}
-                </ul>
+            {produceLoading && (
+              <div className="flex items-center gap-2 py-4">
+                <div className="w-4 h-4 border-2 border-border border-t-ai-500 rounded-full animate-spin shrink-0" />
+                <p className="text-xs text-ink-muted">Claude is reading your profile and researching {job.company}…</p>
               </div>
             )}
-
-            {analysis.skills_matched.length > 0 && (
-              <div>
-                <p className="label">Skills Matched</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {analysis.skills_matched.map((s, i) => (
-                    <span key={i} className="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-0.5 rounded-full">{s}</span>
-                  ))}
-                </div>
+            {produceError && !produceLoading && <p className="text-xs text-rose-600 py-1">{produceError}</p>}
+            {produceResult && !produceLoading && (
+              <div className="space-y-5">
+                {produceResult.tool_calls.length > 0 && (
+                  <div>
+                    <p className="label mb-1.5">What Claude did</p>
+                    <div className="space-y-1.5">
+                      {produceResult.tool_calls.map((tc: import("@/lib/api").AgentToolCall, i: number) => (
+                        <div key={i} className="flex items-center gap-2 text-xs text-ink-secondary">
+                          {tc.tool === "get_candidate_profile" ? (
+                            <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">get_candidate_profile()</span><span className="text-ink-muted">Read your resume</span></>
+                          ) : (
+                            <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ai-400 shrink-0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span className="font-mono bg-elevated border border-border px-2 py-0.5 rounded-md">{tc.query}</span><span className="text-ink-muted">{tc.results_count} result{tc.results_count !== 1 ? "s" : ""}</span></>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {produceResult.resume_summary && (
+                  <div>
+                    <p className="label mb-1.5">Tailored Resume Summary</p>
+                    <p className="text-sm text-ink-secondary leading-relaxed bg-base border border-border rounded-xl px-4 py-3">{produceResult.resume_summary}</p>
+                  </div>
+                )}
+                {produceResult.cover_letter && (
+                  <div>
+                    <p className="label mb-1.5">Cover Letter</p>
+                    <pre className="text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed bg-base border border-border rounded-xl px-4 py-4 font-sans">{produceResult.cover_letter}</pre>
+                  </div>
+                )}
               </div>
             )}
-
-            {analysis.skill_gaps.length > 0 && (
-              <div>
-                <p className="label">Skill Gaps</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {analysis.skill_gaps.map((s, i) => (
-                    <span key={i} className="bg-rose-50 text-rose-700 text-xs px-2.5 py-0.5 rounded-full">{s}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {analysis.cover_letter && (
-              <div>
-                <p className="label">Cover Letter</p>
-                <pre className="text-ink-secondary whitespace-pre-wrap text-xs bg-base border border-border rounded-xl p-4 leading-relaxed">
-                  {analysis.cover_letter}
-                </pre>
-              </div>
+            {!produceResult && !produceLoading && !produceError && (
+              <p className="text-ink-muted text-sm py-2">Claude reads your resume, researches {job.company}, then writes a tailored resume summary and 3-paragraph cover letter.</p>
             )}
           </div>
-        ) : (
-          <p className="text-ink-muted text-sm">
-            Not analyzed yet. Click &quot;Analyze with AI&quot; to get a fit score, skill gaps, and cover letter.
-          </p>
         )}
       </div>
     </div>

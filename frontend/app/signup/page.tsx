@@ -36,7 +36,6 @@ function SignupContent() {
   const [confirm,        setConfirm]        = useState("");
   const [confirmTouched, setConfirmTouched] = useState(false);
   const [error,          setError]          = useState("");
-  const [success,        setSuccess]        = useState(false);
   const [loading,        setLoading]        = useState(false);
   const [providers,      setProviders]      = useState<Record<string, { id: string }> | null>(null);
 
@@ -68,6 +67,7 @@ function SignupContent() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ email: email.trim(), password }),
+        signal:  AbortSignal.timeout(8000),
       });
       const data = await res.json();
 
@@ -75,30 +75,13 @@ function SignupContent() {
         setError(data.detail ?? "Registration failed.");
         return;
       }
-      setSuccess(true);
-      setTimeout(() => router.push("/login"), 2000);
+      router.push(`/auth/verify-email-sent?email=${encodeURIComponent(email.trim())}`);
     } catch {
       setError("Could not reach the server. Is the backend running?");
     } finally {
       setLoading(false);
     }
   };
-
-  if (success) {
-    return (
-      <div className="auth-bg fixed inset-0 z-50 flex items-center justify-center">
-        <div className="auth-card-animate text-center">
-          <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <p className="text-white font-semibold text-lg">Account created!</p>
-          <p className="text-[#64748b] text-sm mt-2">Redirecting to sign in…</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={`auth-bg fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8 ${dmSans.className}`}>

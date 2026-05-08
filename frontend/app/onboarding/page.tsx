@@ -27,7 +27,7 @@ const EMPTY: OnboardingData = {
 
 export default function OnboardingPage() {
   const router           = useRouter();
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const [step,    setStep]    = useState(1);
   const [data,    setData]    = useState<OnboardingData>(EMPTY);
   const [loading, setLoading] = useState(false);
@@ -70,9 +70,11 @@ export default function OnboardingPage() {
     try {
       await saveOnboardingData(data);
       await markOnboardingComplete(userId);
+      await update({ onboarding_complete: true });
       router.push("/");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not save. Try again.");
+    } finally {
       setLoading(false);
     }
   };

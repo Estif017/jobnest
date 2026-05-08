@@ -27,7 +27,7 @@ from models import ScoredJob
 
 logger = logging.getLogger("jobnest.scheduler")
 
-FIT_THRESHOLD = 7   # Minimum fit score to trigger an email alert
+DEFAULT_FIT_THRESHOLD = 7   # Fallback when user has no preference set
 
 
 # ---------------------------------------------------------------------------
@@ -115,11 +115,12 @@ def hunt_new_jobs() -> None:
             logger.error("Search failed for user %d: %s", user_id, exc)
             continue
 
-        high_fit = [s for s in scored if s.fit_score >= FIT_THRESHOLD]
+        threshold = int((onboarding or {}).get("alert_threshold", DEFAULT_FIT_THRESHOLD) or DEFAULT_FIT_THRESHOLD)
+        high_fit = [s for s in scored if s.fit_score >= threshold]
 
         logger.info(
             "User %d: %d new job(s) found, %d high-fit (>= %d).",
-            user_id, len(scored), len(high_fit), FIT_THRESHOLD,
+            user_id, len(scored), len(high_fit), threshold,
         )
 
         if high_fit:

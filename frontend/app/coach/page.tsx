@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { coachChat, fetchCoachHistory } from "@/lib/api";
+import { coachChat, fetchCoachHistory, fetchCoachSessions, deleteCoachSession, ChatSession } from "@/lib/api";
 
 interface Message {
   role: "user" | "coach";
@@ -45,6 +45,9 @@ export default function CoachPage() {
   const router       = useRouter();
   const sessionId    = searchParams.get("session") ?? undefined;
 
+  const [sessions, setSessions]           = useState<ChatSession[]>([]);
+  const [sessionsOpen, setSessionsOpen]   = useState(false);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,6 +63,23 @@ export default function CoachPage() {
       router.replace(`/coach?session=${id}`);
     }
   }, [sessionId, router]);
+
+  // Load session list whenever the panel opens
+  useEffect(() => {
+    if (!sessionsOpen) return;
+    fetchCoachSessions().then(setSessions).catch(() => {});
+  }, [sessionsOpen]);
+
+  const handleNewChat = () => {
+    setSessionsOpen(false);
+    router.push(`/coach?session=${crypto.randomUUID()}`);
+  };
+
+  const handleDeleteSession = async (sid: string) => {
+    await deleteCoachSession(sid);
+    setSessions((prev) => prev.filter((s) => s.session_id !== sid));
+    if (sid === sessionId) handleNewChat();
+  };
 
   // Load history whenever the session changes
   useEffect(() => {
@@ -125,8 +145,8 @@ export default function CoachPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] max-w-3xl mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-2xl bg-ai-50 border border-ai-100 flex items-center justify-center">
+      <div className="flex items-center gap-3 mb-4 relative">
+        <div className="w-10 h-10 rounded-2xl bg-ai-50 border border-ai-100 flex items-center justify-center shrink-0">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ai-500">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
@@ -135,10 +155,57 @@ export default function CoachPage() {
           <h1 className="text-lg font-bold text-ink tracking-tight">AI Career Coach</h1>
           <p className="text-xs text-ink-muted">Powered by Claude · Your personal career advisor</p>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           <span className="text-xs text-ink-muted">Online</span>
+          <button
+            onClick={() => setSessionsOpen((o) => !o)}
+            className="btn-ghost text-xs py-1.5 px-3 ml-1"
+          >
+            Sessions
+          </button>
+          <button onClick={handleNewChat} className="btn-primary text-xs py-1.5 px-3">
+            + New Chat
+          </button>
         </div>
+
+        {/* Sessions dropdown */}
+        {sessionsOpen && (
+          <div className="absolute top-full right-0 mt-2 w-72 card shadow-lg z-20 overflow-hidden">
+            <div className="px-4 py-3 border-b border-border">
+              <p className="text-xs font-semibold text-ink">Chat History</p>
+            </div>
+            {sessions.length === 0 ? (
+              <p className="text-xs text-ink-muted px-4 py-3">No sessions yet.</p>
+            ) : (
+              <div className="max-h-64 overflow-y-auto divide-y divide-border">
+                {sessions.map((s) => (
+                  <div
+                    key={s.session_id}
+                    className={`flex items-center gap-2 px-3 py-2.5 hover:bg-base transition-colors ${
+                      s.session_id === sessionId ? "bg-ai-50" : ""
+                    }`}
+                  >
+                    <button
+                      onClick={() => { setSessionsOpen(false); router.push(`/coach?session=${s.session_id}`); }}
+                      className="flex-1 text-left min-w-0"
+                    >
+                      <p className="text-xs font-medium text-ink truncate">{s.title}</p>
+                      <p className="text-[10px] text-ink-muted">{s.last_active.slice(0, 10)}</p>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSession(s.session_id)}
+                      className="shrink-0 text-[10px] px-1.5 py-0.5 rounded text-rose-500 hover:bg-rose-50 transition-colors"
+                      title="Delete session"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Chat area */}

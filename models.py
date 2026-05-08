@@ -9,7 +9,7 @@ JobAnalysis) power the AI features. All other files import from here.
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
@@ -27,6 +27,9 @@ class Job:
     notes: str = ""                                     # Optional — any personal notes
     date_added: str = field(default_factory=lambda: date.today().isoformat())  # Auto-fills today's date as "YYYY-MM-DD"
     id: int = 0                                         # 0 means not yet saved to the database; SQLite will assign a real id
+    fit_score: Optional[int] = None                     # Latest AI fit score (1-10), None if not yet analyzed
+    date_applied: Optional[str] = None                  # ISO date when the application was submitted
+    follow_up_date: Optional[str] = None                # ISO date to follow up if no response
 
 
 @dataclass

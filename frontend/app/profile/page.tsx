@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useRef } from "react";
 import {
   fetchOnboardingData,
   saveOnboardingData,
+  changePassword as apiChangePassword,
+  uploadResume,
+  fetchGitHub,
+  fetchGitHubProfile,
   OnboardingData,
+  GitHubProfile,
 } from "@/lib/api";
 
 const INDUSTRIES  = ["Tech", "Finance", "Healthcare", "Marketing", "Design", "Data", "Security", "Other"];
@@ -76,11 +82,20 @@ export default function ProfilePage() {
   const [pwLoading, setPwLoading] = useState(false);
   const [pwMsg,     setPwMsg]     = useState("");
 
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const [resumeMsg,       setResumeMsg]       = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [github,        setGithub]        = useState<GitHubProfile | null>(null);
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubMsg,     setGithubMsg]     = useState("");
+
   useEffect(() => {
     fetchOnboardingData()
       .then(setData)
       .catch(() => setError("Could not load profile data."))
       .finally(() => setLoading(false));
+    fetchGitHub().then(setGithub).catch(() => {});
   }, []);
 
   const set = (key: keyof OnboardingData, val: unknown) =>
@@ -106,6 +121,42 @@ export default function ProfilePage() {
     }
   };
 
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setResumeUploading(true);
+    setResumeMsg("");
+    try {
+      const result = await uploadResume(file);
+      setResumeMsg(`Resume parsed — ${result.skills.length} skills extracted.`);
+      // Refresh onboarding data so the skills panel updates
+      fetchOnboardingData().then(setData).catch(() => {});
+    } catch (err: unknown) {
+      setResumeMsg(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setResumeUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSyncGitHub = async () => {
+    if (!data?.github_username?.trim()) {
+      setGithubMsg("Enter a GitHub username first.");
+      return;
+    }
+    setGithubLoading(true);
+    setGithubMsg("");
+    try {
+      const profile = await fetchGitHubProfile(data.github_username.trim());
+      setGithub(profile);
+      setGithubMsg("GitHub profile synced.");
+    } catch (err: unknown) {
+      setGithubMsg(err instanceof Error ? err.message : "Failed to fetch GitHub profile.");
+    } finally {
+      setGithubLoading(false);
+    }
+  };
+
   const handleChangePassword = async () => {
     if (!pwNew || pwNew !== pwConfirm) {
       setPwMsg("New passwords do not match.");
@@ -114,20 +165,7 @@ export default function ProfilePage() {
     setPwLoading(true);
     setPwMsg("");
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/auth/change-password`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id:      Number(session?.user?.userId ?? 1),
-            current:      pwCurrent,
-            new_password: pwNew,
-          }),
-        }
-      );
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.detail ?? "Failed");
+      await apiChangePassword(pwCurrent, pwNew);
       setPwMsg("Password updated.");
       setPwCurrent(""); setPwNew(""); setPwConfirm("");
     } catch (err: unknown) {
@@ -190,6 +228,36 @@ export default function ProfilePage() {
             <span className="text-sm text-ink">{data.name}</span>
           </div>
         )}
+
+        <div className="pt-2 border-t border-border">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            onChange={handleResumeUpload}
+          />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-ink">Resume</p>
+              <p className="text-xs text-ink-muted mt-0.5">PDF · updates your skills and name</p>
+            </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={resumeUploading}
+              className="btn-ghost text-xs py-1.5 px-3"
+            >
+              {resumeUploading ? "Parsing…" : "Upload PDF"}
+            </button>
+          </div>
+          {resumeMsg && (
+            <p className={`text-xs mt-2 px-3 py-1.5 rounded-lg border ${
+              resumeMsg.includes("parsed")
+                ? "text-emerald-700 bg-emerald-50 border-emerald-100"
+                : "text-rose-600 bg-rose-50 border-rose-100"
+            }`}>{resumeMsg}</p>
+          )}
+        </div>
       </div>
 
       {/* Resume & Links */}
@@ -200,7 +268,6 @@ export default function ProfilePage() {
           portfolio_url:   data.portfolio_url,
         })}>
         {[
-          { label: "GitHub Username", key: "github_username" as const, placeholder: "octocat" },
           { label: "LinkedIn URL",    key: "linkedin_url"    as const, placeholder: "https://linkedin.com/in/..." },
           { label: "Portfolio URL",   key: "portfolio_url"   as const, placeholder: "https://yoursite.com" },
         ].map(({ label, key, placeholder }) => (
@@ -215,6 +282,59 @@ export default function ProfilePage() {
             />
           </div>
         ))}
+
+        <div>
+          <label className="label">GitHub Username</label>
+          <div className="flex gap-2 mt-1">
+            <input
+              type="text"
+              value={data.github_username}
+              onChange={(e) => set("github_username", e.target.value)}
+              placeholder="octocat"
+              className="input flex-1"
+            />
+            <button
+              onClick={handleSyncGitHub}
+              disabled={githubLoading}
+              className="btn-ghost text-xs py-2 px-3 shrink-0"
+            >
+              {githubLoading ? "Syncing…" : "Sync"}
+            </button>
+          </div>
+          {githubMsg && (
+            <p className={`text-xs mt-1.5 ${githubMsg.includes("synced") ? "text-emerald-600" : "text-rose-500"}`}>
+              {githubMsg}
+            </p>
+          )}
+          {github && (
+            <div className="mt-3 p-3 rounded-xl bg-elevated border border-border space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-ink">@{github.username}</p>
+                <span className="text-[10px] text-ink-muted">{github.repos.length} repos indexed</span>
+              </div>
+              {github.top_skills.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-ink-muted uppercase tracking-wide mb-1.5">Top Skills</p>
+                  <div className="flex flex-wrap gap-1">
+                    {github.top_skills.map((s) => (
+                      <span key={s} className="text-[10px] px-2 py-0.5 bg-ai-50 border border-ai-100 text-ai-700 rounded-full">{s}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {github.languages.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-ink-muted uppercase tracking-wide mb-1.5">Languages</p>
+                  <div className="flex flex-wrap gap-1">
+                    {github.languages.map((l) => (
+                      <span key={l} className="text-[10px] px-2 py-0.5 bg-elevated border border-border text-ink-secondary rounded-full">{l}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </Section>
 
       {/* Career Goals */}
@@ -225,6 +345,7 @@ export default function ProfilePage() {
           seniority_level:   data.seniority_level,
           employment_types:  data.employment_types,
           work_model:        data.work_model,
+          alert_threshold:   data.alert_threshold,
         })}>
         <div>
           <label className="label flex items-center gap-2">
@@ -285,6 +406,29 @@ export default function ProfilePage() {
                 {m}
               </PillButton>
             ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="label flex items-center justify-between">
+            <span>Job Alert Threshold</span>
+            <span className="text-accent-600 font-semibold">{data.alert_threshold ?? 7}/10</span>
+          </label>
+          <p className="text-xs text-ink-muted mb-2">
+            AI hunter only alerts you when a job scores at or above this fit score.
+          </p>
+          <input
+            type="range"
+            min={1}
+            max={10}
+            step={1}
+            value={data.alert_threshold ?? 7}
+            onChange={(e) => set("alert_threshold", Number(e.target.value))}
+            className="w-full accent-accent-600"
+          />
+          <div className="flex justify-between text-[10px] text-ink-muted mt-1">
+            <span>1 — alert on everything</span>
+            <span>10 — only perfect matches</span>
           </div>
         </div>
       </Section>

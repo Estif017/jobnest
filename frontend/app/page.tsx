@@ -63,7 +63,11 @@ export default function Dashboard() {
     </div>
   );
 
-  const firstName = session?.user?.email?.split("@")[0] ?? "there";
+  const rawName = session?.user?.name
+    ? session.user.name.split(" ")[0]
+    : (session?.user?.email?.split("@")[0] ?? "there")
+        .replace(/[^a-zA-Z]/g, " ").trim().split(" ").find((p) => p.length > 0) ?? "there";
+  const firstName = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase();
   const recent = [...jobs].sort((a, b) => b.id - a.id).slice(0, 5);
 
   const applied = stats?.applied_count ?? 0;
@@ -150,7 +154,7 @@ export default function Dashboard() {
                     <p className="text-xs text-ink-muted truncate">{job.company} · {job.date_added}</p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <FitScore score={null} />
+                    <FitScore score={job.fit_score} />
                     <StatusBadge status={job.status} />
                   </div>
                 </div>

@@ -88,6 +88,33 @@
     font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   }
 
+  /* Dark mode — override CSS variables so the base Tailwind config stays unchanged */
+  .dark {
+    color-scheme: dark;
+    --bg-base:        #0F172A;
+    --bg-surface:     #1E293B;
+    --bg-elevated:    #2D3748;
+    --text-primary:   #F1F5F9;
+    --text-secondary: #94A3B8;
+    --text-muted:     #64748B;
+    --text-disabled:  #475569;
+    --border:         #334155;
+    --border-subtle:  #1E293B;
+    --accent:         #14B8A6;
+    --accent-light:   #0F766E;
+    --ai:             #818CF8;
+    --ai-light:       #312E81;
+  }
+
+  .dark body {
+    background: #0F172A;
+    color: #F1F5F9;
+  }
+
+  /* Scrollbar dark */
+  .dark ::-webkit-scrollbar-thumb { background: #334155; }
+  .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
   * {
     box-sizing: border-box;
   }
@@ -102,7 +129,8 @@
 @layer components {
   /* Card surface */
   .card {
-    @apply bg-surface rounded-2xl shadow-card border border-border/60;
+    @apply bg-surface rounded-2xl shadow-card border border-border/60
+           dark:bg-slate-800 dark:border-slate-700/70 dark:shadow-none;
   }
 
   /* Primary button */
@@ -116,18 +144,21 @@
   .btn-ghost {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl text-ink-secondary text-sm font-medium
            hover:bg-elevated transition-colors focus:outline-none focus:ring-2 focus:ring-border
-           disabled:opacity-40 disabled:cursor-not-allowed;
+           disabled:opacity-40 disabled:cursor-not-allowed
+           dark:text-slate-400 dark:hover:bg-slate-700/60;
   }
 
   /* Form input */
   .input {
     @apply w-full px-3 py-2.5 rounded-xl border border-border bg-surface text-ink text-sm
            placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent-500/30
-           focus:border-accent-500 transition;
+           focus:border-accent-500 transition
+           dark:bg-slate-800/80 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500;
   }
 
   /* Section label */
   .label {
-    @apply block text-xs font-medium text-ink-muted uppercase tracking-wider mb-1.5;
+    @apply block text-xs font-medium text-ink-muted uppercase tracking-wider mb-1.5
+           dark:text-slate-500;
   }
 }

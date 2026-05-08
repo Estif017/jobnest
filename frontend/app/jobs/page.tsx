@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { searchJobs, deleteJob, analyzeJob, Job } from "@/lib/api";
+import { searchJobs, deleteJob, analyzeJob, exportJobsCsv, Job } from "@/lib/api";
 import StatusBadge from "@/components/StatusBadge";
 import FitScore from "@/components/FitScore";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
+import ConfirmButton from "@/components/ConfirmButton";
 
 const STATUSES = ["All", "Saved", "Applied", "Interviewing", "Offer", "Rejected"];
 
@@ -22,37 +23,73 @@ export default function JobsPage() {
 
   const PAGE_SIZE = 25;
 
-  const load = useCallback(() => {
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const load = useCallback((kw: string, st: string) => {
     setLoading(true);
     setPage(0);
-    searchJobs(keyword, status === "All" ? "" : status)
-      .then(setJobs)
+    searchJobs(kw, st === "All" ? "" : st)
+      .then((jobs) => {
+        setJobs(jobs);
+        const preloaded: Record<number, number> = {};
+        jobs.forEach((j) => { if (j.fit_score != null) preloaded[j.id] = j.fit_score; });
+        setFitScores(preloaded);
+      })
       .catch(() => setJobs([]))
       .finally(() => setLoading(false));
-  }, [keyword, status]);
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => load(keyword, status), 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [keyword, status, load]);
 
   const handleAnalyzeAll = async () => {
     const unscored = jobs.filter((j) => fitScores[j.id] == null);
     if (unscored.length === 0) return;
-    setAnalyzing(true);
-    for (let i = 0; i < unscored.length; i++) {
-      setAnalyzeProgress(`Analyzing ${i + 1} / ${unscored.length}`);
-      try {
-        const analysis = await analyzeJob(unscored[i].id);
-        setFitScores((prev) => ({ ...prev, [unscored[i].id]: analysis.fit_score }));
-      } catch { /* skip failed */ }
+    if (unscored.length > 5) {
+      const ok = window.confirm(
+        `This will run AI analysis on ${unscored.length} jobs (uses API credits). Continue?`
+      );
+      if (!ok) return;
     }
+
+    setAnalyzing(true);
+    let done = 0;
+    const CONCURRENCY = 4;
+
+    const runBatch = async (batch: typeof unscored) => {
+      await Promise.allSettled(
+        batch.map(async (job) => {
+          try {
+            const analysis = await analyzeJob(job.id);
+            setFitScores((prev) => ({ ...prev, [job.id]: analysis.fit_score }));
+          } catch { /* skip failed */ }
+          done++;
+          setAnalyzeProgress(`Analyzed ${done} / ${unscored.length}`);
+        })
+      );
+    };
+
+    for (let i = 0; i < unscored.length; i += CONCURRENCY) {
+      await runBatch(unscored.slice(i, i + CONCURRENCY));
+    }
+
     setAnalyzing(false);
     setAnalyzeProgress("Done");
     setTimeout(() => setAnalyzeProgress(""), 2000);
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this job?")) return;
     await deleteJob(id);
     setJobs((prev) => prev.filter((j) => j.id !== id));
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      await exportJobsCsv();
+    } catch { /* silent — browser will show nothing on fail */ }
   };
 
   return (
@@ -76,6 +113,14 @@ export default function JobsPage() {
             className="btn-ghost text-sm"
           >
             {analyzing ? "Analyzing…" : "Analyze All"}
+          </button>
+          <button
+            onClick={handleExportCsv}
+            disabled={jobs.length === 0}
+            title="Download all jobs as CSV"
+            className="btn-ghost text-sm"
+          >
+            Export CSV
           </button>
           <Link href="/scan" className="btn-primary text-sm">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -160,12 +205,7 @@ export default function JobsPage() {
                       <td className="px-5 py-3.5">
                         <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                           <Link href={`/jobs/${job.id}`} className="btn-ghost text-xs py-1 px-2.5">View</Link>
-                          <button
-                            onClick={() => handleDelete(job.id)}
-                            className="text-xs px-2.5 py-1 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
-                          >
-                            Delete
-                          </button>
+                          <ConfirmButton onConfirm={() => handleDelete(job.id)} />
                         </div>
                       </td>
                     </tr>
