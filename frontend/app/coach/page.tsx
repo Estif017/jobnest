@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { coachChat, fetchCoachHistory, fetchCoachSessions, deleteCoachSession, ChatSession } from "@/lib/api";
@@ -46,7 +46,7 @@ function TypingIndicator() {
   );
 }
 
-export default function CoachPage() {
+function CoachPageInner() {
   const searchParams = useSearchParams();
   const router       = useRouter();
   const sessionId    = searchParams.get("session") ?? undefined;
@@ -374,5 +374,13 @@ export default function CoachPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function CoachPage() {
+  return (
+    <Suspense>
+      <CoachPageInner />
+    </Suspense>
   );
 }
