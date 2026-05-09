@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { searchJobs, deleteJob, analyzeJob, exportJobsCsv, importJobFromUrl, createJob, updateJob, Job, JobImport } from "@/lib/api";
 import StatusBadge from "@/components/StatusBadge";
@@ -40,6 +40,8 @@ export default function JobsPage() {
   const [importError, setImportError] = useState("");
   const [importPreview, setImportPreview] = useState<JobImport | null>(null);
   const [importSaving, setImportSaving] = useState(false);
+  const [sortBy, setSortBy] = useState<"date" | "fit" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const PAGE_SIZE = 25;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -176,6 +178,32 @@ export default function JobsPage() {
     setSelected(new Set());
     setBulkStatus("");
   };
+
+  const handleSort = (col: "date" | "fit") => {
+    if (sortBy === col) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(col);
+      setSortDir("desc");
+    }
+  };
+
+  const sortedJobs = useMemo(() => {
+    if (!sortBy) return jobs;
+    return [...jobs].sort((a, b) => {
+      if (sortBy === "date") {
+        const cmp = a.date_added < b.date_added ? -1 : a.date_added > b.date_added ? 1 : 0;
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+      const fa = fitScores[a.id] ?? null;
+      const fb = fitScores[b.id] ?? null;
+      if (fa === null && fb === null) return 0;
+      if (fa === null) return 1;
+      if (fb === null) return -1;
+      const cmp = fa - fb;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [jobs, sortBy, sortDir, fitScores]);
 
   const handleDragStart = (jobId: number) => setDragJobId(jobId);
 
@@ -485,6 +513,30 @@ export default function JobsPage() {
             </button>
           ))}
         </div>
+
+        {/* Sort controls — always visible; lg users also get clickable column headers */}
+        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+          <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Sort:</span>
+          {(["date", "fit"] as const).map((col) => (
+            <button
+              key={col}
+              onClick={() => handleSort(col)}
+              className="px-2.5 py-1 rounded-xl text-xs font-medium transition-colors"
+              style={
+                sortBy === col
+                  ? { background: "var(--accent)", color: "#050C10" }
+                  : { background: "var(--bg-elevated)", color: "var(--text-secondary)", border: "1px solid var(--bg-border)" }
+              }
+            >
+              {col === "date" ? "Date" : "Fit"}{sortBy === col ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
+            </button>
+          ))}
+          {sortBy && (
+            <button onClick={() => setSortBy(null)} className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -563,8 +615,8 @@ export default function JobsPage() {
           })}
         </div>
       ) : (() => {
-        const totalPages = Math.ceil(jobs.length / PAGE_SIZE);
-        const pageJobs   = jobs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+        const totalPages = Math.ceil(sortedJobs.length / PAGE_SIZE);
+        const pageJobs   = sortedJobs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
         return (
           <>
             <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
@@ -583,8 +635,22 @@ export default function JobsPage() {
                     <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Company</th>
                     <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider hidden md:table-cell" style={{ color: "var(--text-muted)" }}>Location</th>
                     <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Status</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>Fit</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>Added</th>
+                    <th
+                      className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell cursor-pointer select-none"
+                      style={{ color: sortBy === "fit" ? "var(--accent)" : "var(--text-muted)" }}
+                      onClick={() => handleSort("fit")}
+                      title="Sort by fit score"
+                    >
+                      Fit{sortBy === "fit" ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
+                    </th>
+                    <th
+                      className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell cursor-pointer select-none"
+                      style={{ color: sortBy === "date" ? "var(--accent)" : "var(--text-muted)" }}
+                      onClick={() => handleSort("date")}
+                      title="Sort by date added"
+                    >
+                      Added{sortBy === "date" ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
+                    </th>
                     <th className="px-5 py-3" />
                   </tr>
                 </thead>
