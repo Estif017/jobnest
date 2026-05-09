@@ -486,3 +486,23 @@ export const uploadResume = (file: File): Promise<{ name: string; skills: string
   fd.append("file", file);
   return apiUpload("/parse-resume", fd);
 };
+
+// ---------------------------------------------------------------------------
+// Resume versioning
+// ---------------------------------------------------------------------------
+
+export interface ResumeVersion {
+  id: number;
+  version: number;
+  filename: string;
+  uploaded_at: string;
+  name: string;
+  is_active: boolean;
+  skills_count: number;
+}
+
+export const fetchResumeVersions = (): Promise<ResumeVersion[]> =>
+  apiFetch("/resume/versions");
+
+export const activateResumeVersion = (id: number): Promise<void> =>
+  apiFetch(`/resume/versions/${id}/activate`, { method: "POST" });

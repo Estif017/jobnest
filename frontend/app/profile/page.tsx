@@ -10,8 +10,11 @@ import {
   uploadResume,
   fetchGitHub,
   fetchGitHubProfile,
+  fetchResumeVersions,
+  activateResumeVersion,
   OnboardingData,
   GitHubProfile,
+  ResumeVersion,
 } from "@/lib/api";
 
 const INDUSTRIES  = ["Tech", "Finance", "Healthcare", "Marketing", "Design", "Data", "Security", "Other"];
@@ -100,6 +103,8 @@ export default function ProfilePage() {
 
   const [resumeUploading, setResumeUploading] = useState(false);
   const [resumeMsg,       setResumeMsg]       = useState("");
+  const [versions,        setVersions]        = useState<ResumeVersion[]>([]);
+  const [activating,      setActivating]      = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [github,        setGithub]        = useState<GitHubProfile | null>(null);
@@ -112,6 +117,7 @@ export default function ProfilePage() {
       .catch(() => setError("Could not load profile data."))
       .finally(() => setLoading(false));
     fetchGitHub().then(setGithub).catch(() => {});
+    fetchResumeVersions().then(setVersions).catch(() => {});
   }, []);
 
   const set = (key: keyof OnboardingData, val: unknown) =>
@@ -146,6 +152,7 @@ export default function ProfilePage() {
       const result = await uploadResume(file);
       setResumeMsg(`Resume parsed — ${result.skills.length} skills extracted.`);
       fetchOnboardingData().then(setData).catch(() => {});
+      fetchResumeVersions().then(setVersions).catch(() => {});
     } catch (err: unknown) {
       setResumeMsg(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -285,6 +292,54 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      {/* Resume version history */}
+      {versions.length > 0 && (
+        <div className="rounded-2xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}>
+          <h2 className="text-sm font-semibold mb-3" style={{ fontSize: "16px", color: "var(--text-primary)" }}>Resume History</h2>
+          <div className="space-y-2">
+            {versions.map((v) => (
+              <div
+                key={v.id}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                style={{ background: "var(--bg-elevated)", border: `1px solid ${v.is_active ? "var(--accent)" : "var(--bg-border)"}` }}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>v{v.version}</span>
+                    {v.is_active && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: "rgba(45,212,191,0.15)", color: "var(--accent)" }}>Active</span>
+                    )}
+                  </div>
+                  <p className="text-xs truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    {v.filename} · {v.skills_count} skills · {v.uploaded_at.slice(0, 10)}
+                  </p>
+                </div>
+                {!v.is_active && (
+                  <button
+                    onClick={async () => {
+                      setActivating(v.id);
+                      try {
+                        await activateResumeVersion(v.id);
+                        setVersions((prev) => prev.map((r) => ({ ...r, is_active: r.id === v.id })));
+                        fetchOnboardingData().then(setData).catch(() => {});
+                      } catch { /* silent */ }
+                      setActivating(null);
+                    }}
+                    disabled={activating === v.id}
+                    className="text-xs px-2.5 py-1 rounded-lg shrink-0 transition-colors"
+                    style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)", color: "var(--text-secondary)" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)"}
+                    onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--bg-border)"}
+                  >
+                    {activating === v.id ? "Activating…" : "Activate"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Resume & Links */}
       <Section title="Resume & Links" sectionKey="links" saving={saving} saved={saved}

@@ -141,6 +141,22 @@ def init_db() -> None:
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS resume_versions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            version     INTEGER NOT NULL,
+            filename    TEXT NOT NULL DEFAULT '',
+            uploaded_at TEXT NOT NULL,
+            name        TEXT NOT NULL DEFAULT '',
+            skills      TEXT NOT NULL DEFAULT '[]',
+            experience  TEXT NOT NULL DEFAULT '[]',
+            education   TEXT NOT NULL DEFAULT '[]',
+            raw_text    TEXT NOT NULL DEFAULT '',
+            is_active   INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
     conn.commit()
     conn.close()
 

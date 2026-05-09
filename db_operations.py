@@ -305,6 +305,93 @@ def load_profile(user_id: int = 1) -> Optional[ResumeProfile]:
 
 
 # ---------------------------------------------------------------------------
+# Resume versioning
+# ---------------------------------------------------------------------------
+
+def save_resume_version(profile: "ResumeProfile", user_id: int, filename: str = "") -> int:
+    """
+    Saves a new resume version to resume_versions, marks it active, and
+    deactivates all previous versions for this user. Returns the new row id.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM resume_versions WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    version_num = (row[0] if row else 0) + 1
+    skills_json     = json.dumps(profile.skills)
+    experience_json = json.dumps([vars(e) for e in profile.experience])
+    education_json  = json.dumps([vars(e) for e in profile.education])
+    uploaded_at     = datetime.now().isoformat()
+    cursor.execute("UPDATE resume_versions SET is_active = 0 WHERE user_id = ?", (user_id,))
+    cursor.execute("""
+        INSERT INTO resume_versions
+            (user_id, version, filename, uploaded_at, name, skills, experience, education, raw_text, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    """, (user_id, version_num, filename, uploaded_at,
+          profile.name, skills_json, experience_json, education_json, profile.raw_text))
+    new_id = cursor.lastrowid or 0
+    conn.commit()
+    conn.close()
+    return new_id
+
+
+def get_resume_versions(user_id: int) -> List[dict]:
+    """Returns all resume versions for a user, newest first, as plain dicts."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, version, filename, uploaded_at, name, is_active, skills
+        FROM resume_versions WHERE user_id = ? ORDER BY version DESC
+    """, (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        try:
+            skills_count = len(json.loads(r["skills"] or "[]"))
+        except Exception:
+            skills_count = 0
+        result.append({
+            "id":          r["id"],
+            "version":     r["version"],
+            "filename":    r["filename"],
+            "uploaded_at": r["uploaded_at"],
+            "name":        r["name"],
+            "is_active":   bool(r["is_active"]),
+            "skills_count": skills_count,
+        })
+    return result
+
+
+def activate_resume_version(version_id: int, user_id: int) -> bool:
+    """
+    Sets the given version as active, deactivates others, and overwrites the
+    user_profile row with this version's parsed resume data. Returns False if
+    the version does not exist or belongs to a different user.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM resume_versions WHERE id = ? AND user_id = ?", (version_id, user_id)
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    cursor.execute("UPDATE resume_versions SET is_active = 0 WHERE user_id = ?", (user_id,))
+    cursor.execute("UPDATE resume_versions SET is_active = 1 WHERE id = ?", (version_id,))
+    updated_at = datetime.now().isoformat()
+    cursor.execute(
+        "UPDATE user_profile SET name = ?, skills = ?, experience = ?, education = ?, raw_text = ?, updated_at = ? "
+        "WHERE COALESCE(user_id, 1) = ?",
+        (row["name"], row["skills"], row["experience"], row["education"], row["raw_text"], updated_at, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ---------------------------------------------------------------------------
 # GitHubProfile persistence
 # ---------------------------------------------------------------------------
 

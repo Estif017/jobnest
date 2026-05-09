@@ -58,6 +58,9 @@ from db_operations import (
     get_unread_count,
     mark_notification_read,
     mark_all_notifications_read,
+    save_resume_version,
+    get_resume_versions,
+    activate_resume_version,
     save_interview_prep,
     load_interview_prep,
     get_cached_company_news,
@@ -1329,6 +1332,7 @@ async def parse_resume_endpoint(
         tmp_path = tmp.name
     try:
         profile = do_parse_resume(tmp_path, user_id=user_id)
+        save_resume_version(profile, user_id, filename=file.filename or "resume.pdf")
         return {
             "name": profile.name,
             "skills": profile.skills,
@@ -1359,6 +1363,25 @@ def onboarding_data(user_id: int = Depends(get_authenticated_user)):
     if data is None:
         return OnboardingDataResponse()
     return OnboardingDataResponse(**data)
+
+
+# ---------------------------------------------------------------------------
+# Resume version history
+# ---------------------------------------------------------------------------
+
+@app.get("/resume/versions")
+def resume_versions_list(user_id: int = Depends(get_authenticated_user)):
+    """Returns all uploaded resume versions for the authenticated user, newest first."""
+    return get_resume_versions(user_id)
+
+
+@app.post("/resume/versions/{version_id}/activate")
+def resume_versions_activate(version_id: int, user_id: int = Depends(get_authenticated_user)):
+    """Sets a previous resume version as active — overwrites user_profile with that version's data."""
+    ok = activate_resume_version(version_id, user_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Resume version not found.")
+    return {"message": "Resume version activated."}
 
 
 # ---------------------------------------------------------------------------
