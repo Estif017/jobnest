@@ -23,6 +23,7 @@ const EMPTY: OnboardingData = {
   open_to_relocation: false, salary_min: 0, salary_max: 0,
   salary_currency: "USD", years_experience: "", top_skills_manual: ["", "", ""],
   certifications: "", linkedin_url: "", portfolio_url: "", github_username: "",
+  alert_threshold: 7,
 };
 
 export default function OnboardingPage() {
