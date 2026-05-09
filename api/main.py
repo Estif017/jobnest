@@ -98,7 +98,10 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-_allowed_origins = ["http://localhost:3000"]
+_allowed_origins = [
+    "http://localhost:3000",
+    "https://jobnest-nu.vercel.app",
+]
 _frontend_url = os.getenv("FRONTEND_URL")
 if _frontend_url:
     _allowed_origins.append(_frontend_url.rstrip("/"))
@@ -106,7 +109,7 @@ if _frontend_url:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"https://[a-zA-Z0-9-]+-estif017s-projects\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
