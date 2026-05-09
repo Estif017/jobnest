@@ -65,7 +65,7 @@ from db_operations import (
     delete_chat_session,
     VALID_STATUSES,
 )
-from api.scheduler import start_scheduler, hunt_new_jobs
+from api.scheduler import start_scheduler, hunt_new_jobs, send_weekly_digest
 from models import Job
 from ai_coach import analyze_job, build_user_profile
 from github_parser import fetch_github_profile
@@ -74,6 +74,7 @@ from smart_scraper import run_smart_search
 
 from api.schemas import (
     JobCreate, JobUpdate, ScrapeRequest, GitHubFetchRequest,
+    ImportUrlRequest, ImportUrlResponse,
     CoachChatRequest, CoachChatResponse, ChatMessage, ChatSession,
     JobResponse, JobAnalysisResponse, GitHubProfileResponse,
     ScoredJobResponse, DashboardStats,
@@ -187,6 +188,13 @@ def scheduler_run_now(_: int = Depends(get_authenticated_user)):
     """
     hunt_new_jobs()
     return {"message": "Hunt complete. Check server logs for results."}
+
+
+@app.post("/scheduler/send-digest")
+def scheduler_send_digest(_: int = Depends(get_authenticated_user)):
+    """Triggers the weekly digest immediately — for testing without waiting until Sunday."""
+    send_weekly_digest()
+    return {"message": "Weekly digest sent. Check server logs for results."}
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +384,56 @@ def jobs_export_csv(user_id: int = Depends(get_authenticated_user)):
     )
 
 
+@app.post("/jobs/import-url", response_model=ImportUrlResponse)
+def jobs_import_url(body: ImportUrlRequest, _: int = Depends(get_authenticated_user)):
+    """
+    Fetches a job posting URL via Jina AI reader and extracts structured fields using
+    Claude Haiku. Returns title/company/location/description for user preview.
+    Does NOT save anything to the database — the frontend calls POST /jobs to persist.
+    """
+    import requests as req_lib
+    import anthropic
+    import json
+
+    reader_url = f"https://r.jina.ai/{body.url}"
+    try:
+        resp = req_lib.get(reader_url, timeout=20, headers={"User-Agent": "JobNest/1.0"})
+        resp.raise_for_status()
+        content = resp.text[:8000]
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not fetch URL: {e}")
+
+    client = anthropic.Anthropic()
+    msg = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=600,
+        messages=[{
+            "role": "user",
+            "content": (
+                "Extract job posting details from the text below. "
+                "Return ONLY valid JSON with these exact keys: title, company, location, description (max 400 words). "
+                "Use empty string for any field not found. No markdown fences, no extra text.\n\n" + content
+            ),
+        }],
+    )
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = "\n".join(raw.split("\n")[1:])
+        raw = raw.rsplit("```", 1)[0].strip()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Could not parse job details from the page.")
+
+    return ImportUrlResponse(
+        title=str(data.get("title", "")),
+        company=str(data.get("company", "")),
+        location=str(data.get("location", "")),
+        description=str(data.get("description", "")),
+        url=body.url,
+    )
+
+
 @app.get("/jobs/{job_id}", response_model=JobResponse)
 def jobs_get(job_id: int, user_id: int = Depends(get_authenticated_user)):
     """Returns a single job by id. 404 if not found."""
@@ -450,7 +508,8 @@ def jobs_get_analysis(job_id: int, user_id: int = Depends(get_authenticated_user
 
 
 @app.post("/jobs/{job_id}/analyze", response_model=JobAnalysisResponse)
-def jobs_analyze(job_id: int, user_id: int = Depends(get_authenticated_user)):
+@limiter.limit("20/hour")
+def jobs_analyze(request: Request, job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Runs AI analysis on a job using the stored user profile.
     Fetches the job and profile from the database, calls analyze_job(),
@@ -581,7 +640,8 @@ def company_news(job_id: int, user_id: int = Depends(get_authenticated_user)):
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs/{job_id}/agent-analyze")
-def jobs_agent_analyze(job_id: int, user_id: int = Depends(get_authenticated_user)):
+@limiter.limit("10/hour")
+def jobs_agent_analyze(request: Request, job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Runs an agentic analysis of a job using Claude's Tool Use API.
     Claude decides when to call search_web — the backend never hardcodes it.
@@ -726,7 +786,8 @@ def jobs_agent_analyze(job_id: int, user_id: int = Depends(get_authenticated_use
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs/{job_id}/agent-produce")
-def jobs_agent_produce(job_id: int, user_id: int = Depends(get_authenticated_user)):
+@limiter.limit("10/hour")
+def jobs_agent_produce(request: Request, job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Agentic writing endpoint: Claude researches the company and reads the
     candidate's profile — deciding on its own when to call each tool — then
@@ -1057,7 +1118,8 @@ def _run_agent_produce(job: Job, user_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs/{job_id}/full-hunt")
-def jobs_full_hunt(job_id: int, user_id: int = Depends(get_authenticated_user)):
+@limiter.limit("3/hour")
+def jobs_full_hunt(request: Request, job_id: int, user_id: int = Depends(get_authenticated_user)):
     """
     Orchestrator: one endpoint, one goal — help the user land this job.
     Claude decides which specialist tools to call and in what order.
@@ -1304,7 +1366,8 @@ def onboarding_data(user_id: int = Depends(get_authenticated_user)):
 # ---------------------------------------------------------------------------
 
 @app.post("/scrape", response_model=List[ScoredJobResponse])
-def scrape(body: ScrapeRequest, user_id: int = Depends(get_authenticated_user)):
+@limiter.limit("10/hour")
+def scrape(request: Request, body: ScrapeRequest, user_id: int = Depends(get_authenticated_user)):
     """
     Searches RemoteOK for live job listings matching the query, saves new ones
     to the tracker, and optionally scores them with AI (score=true).
@@ -1388,7 +1451,8 @@ def coach_history(session_id: Optional[str] = None, user_id: int = Depends(get_a
 
 
 @app.post("/coach/chat", response_model=CoachChatResponse)
-def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_authenticated_user)):
+@limiter.limit("30/hour")
+def coach_chat(request: Request, body: CoachChatRequest, user_id: int = Depends(get_authenticated_user)):
     """
     Sends a user message to Claude and returns a career coaching reply.
     Saves both the user message and the reply to chat_history.
@@ -1406,13 +1470,28 @@ def coach_chat(body: CoachChatRequest, user_id: int = Depends(get_authenticated_
     # Retrieve 3 most relevant past messages for this user
     memories = retrieve_relevant(user_id, body.message, n=3)
 
-    # Build system prompt — name + skills + injected long-term memories
-    profile = build_user_profile(user_id)
-    if profile:
-        top5   = ", ".join(profile.all_skills[:5]) or "not listed"
-        system = f"Career coach. Candidate: {profile.resume.name}. Top skills: {top5}. Be concise and practical."
-    else:
-        system = "Career coach helping a job seeker. Be concise and practical."
+    # Build system prompt — name + skills + onboarding context + injected long-term memories
+    profile    = build_user_profile(user_id)
+    onboarding = load_onboarding_data(user_id)
+
+    name = profile.resume.name if profile else "the candidate"
+    top5 = (", ".join(profile.all_skills[:5]) if profile else "") or ""
+
+    parts = [f"You are a career coach helping {name}. Be concise and practical."]
+    if onboarding:
+        if onboarding.get("target_role"):
+            parts.append(f"Target role: {onboarding['target_role']}.")
+        if onboarding.get("seniority_level"):
+            parts.append(f"Seniority: {onboarding['seniority_level']}.")
+        if onboarding.get("current_location"):
+            parts.append(f"Location: {onboarding['current_location']}.")
+        if onboarding.get("work_model"):
+            parts.append(f"Work model: {onboarding['work_model']}.")
+        if onboarding.get("years_experience"):
+            parts.append(f"Experience: {onboarding['years_experience']} years.")
+    if top5:
+        parts.append(f"Top skills: {top5}.")
+    system = " ".join(parts)
 
     if body.job_id:
         job = get_job_by_id(body.job_id, user_id)

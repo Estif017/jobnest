@@ -249,6 +249,17 @@ export const searchJobs = (keyword = "", status = ""): Promise<Job[]> => {
   return apiFetch(`/jobs/search?${params.toString()}`);
 };
 
+export interface JobImport {
+  title: string;
+  company: string;
+  location: string;
+  description: string;
+  url: string;
+}
+
+export const importJobFromUrl = (url: string): Promise<JobImport> =>
+  apiFetch("/jobs/import-url", { method: "POST", body: JSON.stringify({ url }) });
+
 // ---------------------------------------------------------------------------
 // AI Analysis
 // ---------------------------------------------------------------------------

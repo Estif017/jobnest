@@ -93,6 +93,7 @@ export default function Dashboard() {
         .replace(/[^a-zA-Z]/g, " ").trim().split(" ").find(p => p.length > 0) ?? "there";
   const firstName = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase();
 
+  const today    = new Date().toISOString().split("T")[0];
   const recent   = [...jobs].sort((a, b) => b.id - a.id).slice(0, 5);
   const total    = stats?.total_jobs ?? 0;
   const applied  = stats?.applied_count ?? 0;
@@ -223,6 +224,9 @@ export default function Dashboard() {
                     </Link>
                     <p className="text-xs truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
                       {job.company} · {job.date_added}
+                      {job.follow_up_date && job.follow_up_date < today && job.status !== "Offer" && job.status !== "Rejected" && (
+                        <span className="ml-1.5 text-[10px] font-medium px-1 py-0.5 rounded" style={{ background: "rgba(251,191,36,0.12)", color: "var(--yellow)" }}>follow-up overdue</span>
+                      )}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">

@@ -50,6 +50,20 @@ class GitHubFetchRequest(BaseModel):
     username: str
 
 
+class ImportUrlRequest(BaseModel):
+    """Body for POST /jobs/import-url."""
+    url: str
+
+
+class ImportUrlResponse(BaseModel):
+    """Extracted job posting data returned by POST /jobs/import-url. Not saved to DB."""
+    title:       str
+    company:     str
+    location:    str
+    description: str
+    url:         str
+
+
 class CoachChatRequest(BaseModel):
     """Body for POST /coach/chat."""
     message:    str

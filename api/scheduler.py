@@ -17,10 +17,12 @@ from typing import List, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+import datetime
 from db_operations import (
     get_all_active_users,
     load_onboarding_data,
     create_notification,
+    get_all_jobs,
 )
 from smart_scraper import run_smart_search
 from models import ScoredJob
@@ -72,6 +74,107 @@ def _send_alert(to_email: str, jobs: List[ScoredJob]) -> None:
         logger.info("Alert sent to %s (%d job(s)).", to_email, count)
     except Exception as exc:
         logger.error("Failed to send alert to %s: %s", to_email, exc)
+
+
+# ---------------------------------------------------------------------------
+# Weekly digest email
+# ---------------------------------------------------------------------------
+
+def send_weekly_digest() -> None:
+    """
+    Sends each user a plain-text weekly pipeline summary.
+    Runs every Sunday. Covers: total tracked, pipeline breakdown,
+    overdue follow-ups, and high-fit jobs still saved (not applied).
+    """
+    logger.info("=== JobNest weekly digest starting ===")
+    sender   = os.getenv("EMAIL_SENDER", "")
+    password = os.getenv("EMAIL_PASSWORD", "")
+    host     = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    port     = int(os.getenv("SMTP_PORT", "587"))
+
+    if not sender or not password:
+        logger.warning("EMAIL credentials not set — digest skipped.")
+        return
+
+    users = get_all_active_users()
+    today = datetime.date.today().isoformat()
+    week_label = datetime.date.today().strftime("%b %d, %Y")
+
+    for user in users:
+        user_id: int = user["id"]
+        email: str   = user["email"]
+
+        jobs = get_all_jobs(user_id)
+        if not jobs:
+            continue
+
+        from collections import Counter
+        status_counts = Counter(j.status for j in jobs)
+        total      = len(jobs)
+        applied    = status_counts.get("Applied", 0)
+        interviews = status_counts.get("Interviewing", 0)
+        offers     = status_counts.get("Offer", 0)
+        response   = round((interviews / applied) * 100) if applied > 0 else 0
+
+        overdue = [
+            j for j in jobs
+            if j.follow_up_date and j.follow_up_date < today
+            and j.status not in ("Offer", "Rejected")
+        ]
+
+        high_fit_unsent = [
+            j for j in jobs
+            if j.status == "Saved"
+            and getattr(j, "fit_score", None) is not None
+            and (j.fit_score or 0) >= 7  # type: ignore[operator]
+        ]
+
+        lines = [
+            f"JobNest Weekly Pipeline — {week_label}",
+            "=" * 52,
+            "",
+            "Pipeline overview:",
+            f"  Total tracked:   {total}",
+            f"  Applied:         {applied}",
+            f"  Interviewing:    {interviews}",
+            f"  Offers:          {offers}",
+            f"  Response rate:   {response}%",
+        ]
+
+        if overdue:
+            lines.append("")
+            lines.append(f"Follow-ups overdue ({len(overdue)}):")
+            for j in overdue[:5]:
+                lines.append(f"  - {j.title} at {j.company} (due {j.follow_up_date})")
+            if len(overdue) > 5:
+                lines.append(f"  ... and {len(overdue) - 5} more")
+
+        if high_fit_unsent:
+            lines.append("")
+            lines.append(f"High-fit jobs you haven't applied to yet ({len(high_fit_unsent)}):")
+            for j in high_fit_unsent[:5]:
+                score = getattr(j, "fit_score", "?")
+                lines.append(f"  - {score}/10  {j.title} at {j.company}")
+            if len(high_fit_unsent) > 5:
+                lines.append(f"  ... and {len(high_fit_unsent) - 5} more")
+
+        lines += ["", "Keep the momentum going!", "Open JobNest: http://localhost:3000/jobs"]
+
+        msg = MIMEText("\n".join(lines), "plain")
+        msg["Subject"] = f"JobNest Weekly Digest — {week_label}"
+        msg["From"]    = sender
+        msg["To"]      = email
+
+        try:
+            with smtplib.SMTP(host, port) as server:
+                server.starttls()
+                server.login(sender, password)
+                server.sendmail(sender, email, msg.as_string())
+            logger.info("Weekly digest sent to %s.", email)
+        except Exception as exc:
+            logger.error("Failed to send digest to %s: %s", email, exc)
+
+    logger.info("=== Weekly digest complete ===")
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +260,16 @@ def start_scheduler() -> BackgroundScheduler:
         name="JobNest Daily Hunter",
         replace_existing=True,
     )
+    scheduler.add_job(
+        send_weekly_digest,
+        trigger="cron",
+        day_of_week="sun",
+        hour=9,
+        minute=0,
+        id="weekly_digest",
+        name="JobNest Weekly Digest",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("JobNest scheduler started — hunting every 24 hours.")
+    logger.info("JobNest scheduler started — hunting every 24 hours, digest every Sunday 09:00 UTC.")
     return scheduler

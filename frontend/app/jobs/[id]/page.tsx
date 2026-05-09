@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   fetchJob, fetchAnalysis, analyzeJob, updateJob, deleteJob,
@@ -14,6 +14,7 @@ import ConfirmButton from "@/components/ConfirmButton";
 import FitScore from "@/components/FitScore";
 import StatusBadge from "@/components/StatusBadge";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import MarkdownEditor from "@/components/MarkdownEditor";
 
 const STATUSES = ["Saved", "Applied", "Interviewing", "Offer", "Rejected"];
 
@@ -45,12 +46,16 @@ export default function JobDetailPage() {
   const [huntLoading, setHuntLoading] = useState(false);
   const [huntError, setHuntError]     = useState<string | null>(null);
 
+  const [notes, setNotes] = useState("");
+  const notesSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     Promise.all([
       fetchJob(jobId),
       fetchAnalysis(jobId).catch(() => null),
     ]).then(([j, a]) => {
       setJob(j);
+      setNotes(j.notes ?? "");
       setAnalysis(a);
       setNewsLoading(true);
       fetchCompanyNews(jobId)
@@ -214,12 +219,19 @@ export default function JobDetailPage() {
               </a>
             </div>
           )}
-          {job.notes && (
-            <div className="col-span-2">
-              <p className="label">Notes</p>
-              <p style={{ color: "var(--text-secondary)" }}>{job.notes}</p>
-            </div>
-          )}
+          <div className="col-span-2">
+            <p className="label">Notes</p>
+            <MarkdownEditor
+              value={notes}
+              onChange={(val) => {
+                setNotes(val);
+                if (notesSaveRef.current) clearTimeout(notesSaveRef.current);
+                notesSaveRef.current = setTimeout(() => {
+                  updateJob(jobId, { notes: val }).then(setJob);
+                }, 800);
+              }}
+            />
+          </div>
         </div>
       </div>
 
