@@ -16,6 +16,10 @@ from typing import List, Optional
 from database import get_connection
 from models import Job, ExperienceEntry, EducationEntry, ResumeProfile, GitHubProfile, JobAnalysis
 
+
+class DuplicateEmailError(Exception):
+    """Raised by create_user() when the email address already exists."""
+
 VALID_STATUSES = ("Saved", "Applied", "Interviewing", "Offer", "Rejected")  # Allowed status values
 
 
@@ -37,7 +41,7 @@ def add_job(job: Job, user_id: int = 1) -> bool:
 
         conn.commit()   # Write the change to disk
         return True
-    except sqlite3.Error:
+    except Exception:
         return False    # Something went wrong — tell the caller it failed
     finally:
         conn.close()    # Always runs — even if an error occurred
@@ -133,7 +137,7 @@ def update_job(job_id: int, user_id: int = 1, **kwargs) -> bool:
         cursor.execute(f"UPDATE jobs SET {set_clause} WHERE id = ? AND COALESCE(user_id, 1) = ?", values)
         conn.commit()
         return cursor.rowcount > 0  # rowcount = how many rows were changed — 0 means no job with that id existed
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()
@@ -151,7 +155,7 @@ def delete_job(job_id: int, user_id: int = 1) -> bool:
         cursor.execute("DELETE FROM jobs WHERE id = ? AND COALESCE(user_id, 1) = ?", (job_id, user_id))
         conn.commit()
         return cursor.rowcount > 0  # 0 means no row matched that id — nothing was deleted
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()
@@ -264,7 +268,7 @@ def save_profile(profile: ResumeProfile, user_id: int = 1) -> bool:
 
         conn.commit()
         return True
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()
@@ -315,9 +319,9 @@ def save_resume_version(profile: "ResumeProfile", user_id: int, filename: str = 
     """
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM resume_versions WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT COUNT(*) AS cnt FROM resume_versions WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
-    version_num = (row[0] if row else 0) + 1
+    version_num = (row["cnt"] if row else 0) + 1
     skills_json     = json.dumps(profile.skills)
     experience_json = json.dumps([vars(e) for e in profile.experience])
     education_json  = json.dumps([vars(e) for e in profile.education])
@@ -419,7 +423,7 @@ def save_github_profile(profile: GitHubProfile, user_id: int = 1) -> bool:
 
         conn.commit()
         return True
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()
@@ -487,7 +491,7 @@ def save_analysis(analysis: JobAnalysis, user_id: int = 1) -> bool:
 
         conn.commit()
         return True
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()
@@ -548,7 +552,7 @@ def save_search_session(query: str, job_count: int, user_id: int = 1) -> int:
 
         conn.commit()
         return cursor.lastrowid   # SQLite id assigned to this new row
-    except sqlite3.Error:
+    except Exception:
         return -1
     finally:
         conn.close()
@@ -751,7 +755,7 @@ def save_onboarding_data(user_id: int, data: dict) -> bool:
             """, (updated_at,) + fields)
         conn.commit()
         return True
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()
@@ -828,8 +832,11 @@ def create_user(
               1 if is_verified else 0, verification_token, verification_token_expires))
         conn.commit()
         return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        raise   # Caller handles duplicate email
+    except Exception as exc:
+        exc_name = type(exc).__name__
+        if "IntegrityError" in exc_name or "UniqueViolation" in exc_name:
+            raise DuplicateEmailError("Email already exists") from exc
+        raise
     finally:
         conn.close()
 
@@ -936,7 +943,7 @@ def save_interview_prep(job_id: int, user_id: int, questions: list, research: li
         )
         conn.commit()
         return cursor.lastrowid
-    except sqlite3.Error:
+    except Exception:
         return -1
     finally:
         conn.close()
@@ -987,7 +994,7 @@ def create_notification(
         )
         conn.commit()
         return cursor.lastrowid
-    except sqlite3.Error:
+    except Exception:
         return -1
     finally:
         conn.close()
@@ -1023,10 +1030,10 @@ def get_unread_count(user_id: int) -> int:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read = 0",
+        "SELECT COUNT(*) AS cnt FROM notifications WHERE user_id = ? AND read = 0",
         (user_id,),
     )
-    count = cursor.fetchone()[0]
+    count = cursor.fetchone()["cnt"]
     conn.close()
     return count
 
@@ -1042,7 +1049,7 @@ def mark_notification_read(notification_id: int, user_id: int) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()
@@ -1059,7 +1066,7 @@ def mark_all_notifications_read(user_id: int) -> bool:
         )
         conn.commit()
         return True
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()
@@ -1089,7 +1096,7 @@ def set_onboarding_complete(user_id: int) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
-    except sqlite3.Error:
+    except Exception:
         return False
     finally:
         conn.close()

@@ -8,7 +8,6 @@ email verification, and password reset flows.
 
 import re
 import secrets
-import sqlite3
 from datetime import datetime, timedelta
 
 import bcrypt
@@ -26,7 +25,7 @@ from db_operations import (
     create_user, get_user_by_email, get_user_by_id, set_onboarding_complete,
     set_verification_token, get_user_by_verification_token, mark_user_verified,
     set_reset_token, get_user_by_reset_token, complete_password_reset,
-    record_failed_login, reset_failed_logins,
+    record_failed_login, reset_failed_logins, DuplicateEmailError,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -85,7 +84,7 @@ def register(request: Request, body: RegisterRequest):
             verification_token=token,
             verification_token_expires=expires,
         )
-    except sqlite3.IntegrityError:
+    except DuplicateEmailError:
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
     send_verification_email(body.email.lower().strip(), token)

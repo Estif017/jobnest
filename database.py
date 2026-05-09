@@ -1,30 +1,133 @@
 """
-database.py — SQLite connection and schema setup for JobNest AI.
+database.py — SQLite/PostgreSQL connection and schema setup for JobNest AI.
 
-This file has two jobs: create every table the app needs (init_db), and hand
-out database connections to any file that asks (get_connection). Five tables
-are managed here: jobs (the core tracker), user_profile (resume extraction),
-github_profile (GitHub account data), search_sessions (live search history),
-and ai_analyses (Claude job scoring results). Nothing else in the project
-touches the database filename or connection config — change DB_NAME here and
-it updates everywhere.
+Locally the app uses SQLite (jobnest.db). In production (Railway) it connects
+to PostgreSQL via the DATABASE_URL environment variable. The public API is
+identical: get_connection() returns a connection object whose cursor supports
+the same execute/fetchone/fetchall/lastrowid interface regardless of the backend.
+
+Two thin wrapper classes (_PgCursor, _PgConnection) translate the small
+differences between sqlite3 and psycopg2 so the rest of the codebase never
+needs to know which database is in use.
 """
 
+import os
 import sqlite3
 
-DB_NAME = "jobnest.db"  # Single constant — change the filename here and it updates everywhere
+DB_NAME = "jobnest.db"
 
+
+# ---------------------------------------------------------------------------
+# PostgreSQL compatibility helpers
+# ---------------------------------------------------------------------------
+
+def _is_pg() -> bool:
+    return bool(os.environ.get("DATABASE_URL"))
+
+
+def _ddl(sql: str) -> str:
+    """Translates SQLite DDL to PostgreSQL DDL when DATABASE_URL is set."""
+    if not _is_pg():
+        return sql
+    return sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+
+
+class _PgCursor:
+    """
+    Wraps a psycopg2 RealDictCursor to behave like sqlite3.Cursor.
+
+    Key differences handled here:
+    - ? placeholders → %s
+    - AUTOINCREMENT id capture via RETURNING id on every INSERT
+    - rowcount and lastrowid properties
+    """
+
+    def __init__(self, pg_cursor):
+        self._c = pg_cursor
+        self._lastrowid = None
+
+    def execute(self, sql: str, params=None):
+        sql = sql.replace("?", "%s")
+        is_insert = (
+            sql.strip().upper().startswith("INSERT")
+            and "RETURNING" not in sql.upper()
+        )
+        if is_insert:
+            sql = sql.rstrip().rstrip(";") + " RETURNING id"
+        if params is not None:
+            self._c.execute(sql, params)
+        else:
+            self._c.execute(sql)
+        if is_insert:
+            try:
+                row = self._c.fetchone()
+                self._lastrowid = row["id"] if row else None
+            except Exception:
+                self._lastrowid = None
+
+    @property
+    def lastrowid(self):
+        return self._lastrowid
+
+    @property
+    def rowcount(self):
+        return self._c.rowcount
+
+    def fetchone(self):
+        return self._c.fetchone()
+
+    def fetchall(self):
+        return self._c.fetchall()
+
+
+class _PgConnection:
+    """Wraps a psycopg2 connection to behave like sqlite3.Connection."""
+
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+
+    def cursor(self):
+        from psycopg2.extras import RealDictCursor
+        return _PgCursor(self._conn.cursor(cursor_factory=RealDictCursor))
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+
+def get_connection():
+    """
+    Returns a database connection. Uses PostgreSQL when DATABASE_URL is set
+    (production on Railway), otherwise SQLite (local development).
+    """
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url:
+        import psycopg2
+        # Railway provides postgres:// URIs; psycopg2 requires postgresql://
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        conn = psycopg2.connect(database_url)
+        return _PgConnection(conn)
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+# ---------------------------------------------------------------------------
+# Schema creation
+# ---------------------------------------------------------------------------
 
 def init_db() -> None:
     """
     Creates all database tables if they don't exist yet.
     Safe to call every time the app starts — won't overwrite existing data.
-    New tables are added here as the app grows; existing tables are never dropped.
     """
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()  # A cursor is like a pen — you use it to write SQL commands
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS jobs (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             title      TEXT NOT NULL,
@@ -35,69 +138,69 @@ def init_db() -> None:
             notes      TEXT,
             date_added TEXT NOT NULL
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS user_profile (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT NOT NULL,
-            skills     TEXT NOT NULL DEFAULT '[]',   -- JSON array stored as text
-            experience TEXT NOT NULL DEFAULT '[]',   -- JSON array of {title, company, years}
-            education  TEXT NOT NULL DEFAULT '[]',   -- JSON array of {degree, institution, year}
+            skills     TEXT NOT NULL DEFAULT '[]',
+            experience TEXT NOT NULL DEFAULT '[]',
+            education  TEXT NOT NULL DEFAULT '[]',
             raw_text   TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS search_sessions (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            query      TEXT NOT NULL,       -- The job title + location searched
-            run_at     TEXT NOT NULL,       -- ISO timestamp of when the search ran
-            job_count  INTEGER DEFAULT 0    -- How many jobs were returned
+            query      TEXT NOT NULL,
+            run_at     TEXT NOT NULL,
+            job_count  INTEGER DEFAULT 0
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS github_profile (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             username   TEXT NOT NULL,
-            repos      TEXT NOT NULL DEFAULT '[]',   -- JSON array of repo name strings
-            languages  TEXT NOT NULL DEFAULT '[]',   -- JSON array of unique language strings
-            topics     TEXT NOT NULL DEFAULT '[]',   -- JSON array of GitHub topic strings
-            top_skills TEXT NOT NULL DEFAULT '[]',   -- JSON array — top 5 most-used languages
+            repos      TEXT NOT NULL DEFAULT '[]',
+            languages  TEXT NOT NULL DEFAULT '[]',
+            topics     TEXT NOT NULL DEFAULT '[]',
+            top_skills TEXT NOT NULL DEFAULT '[]',
             updated_at TEXT NOT NULL
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS ai_analyses (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id         INTEGER NOT NULL,
             fit_score      INTEGER DEFAULT 0,
-            fit_reasons    TEXT NOT NULL DEFAULT '[]',   -- JSON array
+            fit_reasons    TEXT NOT NULL DEFAULT '[]',
             verdict        TEXT NOT NULL DEFAULT 'PENDING',
             confidence     REAL DEFAULT 0.0,
-            skill_gaps     TEXT NOT NULL DEFAULT '[]',   -- JSON array
-            skills_matched TEXT NOT NULL DEFAULT '[]',   -- JSON array
+            skill_gaps     TEXT NOT NULL DEFAULT '[]',
+            skills_matched TEXT NOT NULL DEFAULT '[]',
             cover_letter   TEXT NOT NULL DEFAULT '',
             created_at     TEXT NOT NULL,
-            FOREIGN KEY (job_id) REFERENCES jobs(id)     -- links analysis to its job row
+            FOREIGN KEY (job_id) REFERENCES jobs(id)
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS users (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             email               TEXT NOT NULL UNIQUE,
-            password_hash       TEXT,           -- NULL for Google OAuth users
+            password_hash       TEXT,
             provider            TEXT NOT NULL DEFAULT 'email',
             created_at          TEXT NOT NULL,
             onboarding_complete INTEGER NOT NULL DEFAULT 0
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS interview_preps (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id         INTEGER NOT NULL,
@@ -107,9 +210,9 @@ def init_db() -> None:
             smart_question TEXT NOT NULL DEFAULT '',
             created_at     TEXT NOT NULL
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS notifications (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id    INTEGER REFERENCES users(id),
@@ -120,18 +223,18 @@ def init_db() -> None:
             read       INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS chat_history (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            role      TEXT NOT NULL,      -- 'user' or 'assistant'
+            role      TEXT NOT NULL,
             message   TEXT NOT NULL,
             timestamp TEXT NOT NULL
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS company_news_cache (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id     INTEGER NOT NULL UNIQUE,
@@ -139,9 +242,9 @@ def init_db() -> None:
             bullets    TEXT NOT NULL DEFAULT '[]',
             fetched_at TEXT NOT NULL
         )
-    """)
+    """))
 
-    cursor.execute("""
+    cursor.execute(_ddl("""
         CREATE TABLE IF NOT EXISTS resume_versions (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id     INTEGER NOT NULL REFERENCES users(id),
@@ -155,23 +258,38 @@ def init_db() -> None:
             raw_text    TEXT NOT NULL DEFAULT '',
             is_active   INTEGER NOT NULL DEFAULT 0
         )
-    """)
+    """))
 
     conn.commit()
     conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Schema migrations — adds new columns without dropping data
+# ---------------------------------------------------------------------------
+
 def migrate_db() -> None:
     """
     Adds new columns to existing tables without dropping data.
     Safe to call on every startup — skips columns that already exist.
+    Works with both SQLite (PRAGMA) and PostgreSQL (information_schema).
     """
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
+    is_pg = _is_pg()
 
     def _add_col(table: str, col: str, defn: str) -> None:
-        cursor.execute(f"PRAGMA table_info({table})")
-        if col not in [row[1] for row in cursor.fetchall()]:
+        if is_pg:
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = ? AND column_name = ?",
+                (table, col),
+            )
+            exists = cursor.fetchone() is not None
+        else:
+            cursor.execute(f"PRAGMA table_info({table})")
+            exists = col in [row[1] for row in cursor.fetchall()]
+        if not exists:
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {defn}")
 
     # user_profile — onboarding fields
@@ -218,7 +336,7 @@ def migrate_db() -> None:
     # per-user scheduler alert threshold (minimum fit score, default 7)
     _add_col("user_profile", "alert_threshold", "INTEGER DEFAULT 7")
 
-    # Existing users (no token) are considered verified; new unverified users will have a token
+    # Existing users (no token) are considered verified
     cursor.execute(
         "UPDATE users SET is_verified = 1 WHERE is_verified = 0 AND verification_token IS NULL"
     )
@@ -229,14 +347,3 @@ def migrate_db() -> None:
 
     conn.commit()
     conn.close()
-
-
-def get_connection() -> sqlite3.Connection:
-    """
-    Opens and returns a connection to the database.
-    Other files call this instead of knowing the database filename themselves.
-    One place to change the filename — everything else just calls this function.
-    """
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row  # Makes rows behave like dictionaries — access by name (row["title"]) not index (row[0])
-    return conn

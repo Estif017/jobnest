@@ -94,7 +94,10 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (user) {
-        token.userId              = user.userId ?? user.id;
+        // For credentials, userId is set by authorize(). For OAuth, it's set
+        // below after the backend upsert. Never fall back to user.id here —
+        // Google subject IDs are 21-digit numbers that overflow SQLite INTEGER.
+        if (user.userId) token.userId = user.userId;
         token.onboarding_complete = user.onboarding_complete ?? false;
       }
 
