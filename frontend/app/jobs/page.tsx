@@ -497,14 +497,14 @@ export default function JobsPage() {
           action={<Link href="/scan" className="btn-primary text-sm">Scan for jobs</Link>}
         />
       ) : view === "kanban" ? (
-        <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: "60vh" }}>
+        <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory" style={{ minHeight: "60vh" }}>
           {KANBAN_COLS.map(({ status: col, color }) => {
             const colJobs = jobs.filter((j) => j.status === col);
             const isOver  = dragOverCol === col;
             return (
               <div
                 key={col}
-                className="flex-shrink-0 w-64 rounded-2xl flex flex-col"
+                className="flex-shrink-0 w-72 sm:w-64 rounded-2xl flex flex-col snap-start"
                 style={{
                   background: "var(--bg-surface)",
                   border: `1px solid ${isOver ? color : "var(--bg-border)"}`,

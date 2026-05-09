@@ -107,11 +107,10 @@ export default function Dashboard() {
 
       {/* Hero banner */}
       <div
-        className="relative overflow-hidden rounded-2xl mb-6 dot-grid"
+        className="relative overflow-hidden rounded-2xl mb-6 dot-grid p-6 sm:px-10 sm:py-8"
         style={{
           background: "linear-gradient(135deg, #0F2027 0%, #1A3A4A 50%, #0A1628 100%)",
           minHeight: "160px",
-          padding: "32px 40px",
         }}
       >
         {/* Radial glow — top-right */}
@@ -119,7 +118,7 @@ export default function Dashboard() {
           className="absolute inset-0 pointer-events-none"
           style={{ background: "radial-gradient(ellipse at 80% 50%, rgba(45,212,191,0.12) 0%, transparent 60%)" }}
         />
-        <div className="relative flex items-start justify-between gap-6">
+        <div className="relative flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           {/* Left: text */}
           <div>
             <p
@@ -141,7 +140,7 @@ export default function Dashboard() {
             </p>
           </div>
           {/* Right: buttons */}
-          <div className="flex items-center gap-3 shrink-0 mt-1">
+          <div className="flex items-center gap-3 sm:shrink-0 sm:mt-1">
             <Link href="/scan" className="btn-primary text-sm">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -160,7 +159,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         {kpis.map(({ key, label, accent, suffix, icon }) => (
           <div
             key={key}

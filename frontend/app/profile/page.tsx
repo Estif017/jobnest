@@ -567,7 +567,7 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Salary Min</label>
             <input type="number" value={data.salary_min || ""} onChange={(e) => set("salary_min", Number(e.target.value))} placeholder="50000" className="input mt-1" />

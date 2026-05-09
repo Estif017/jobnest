@@ -342,7 +342,7 @@ export default function JobDetailPage() {
             )}
 
             {huntResult.analysis && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {huntResult.analysis.skills_matched.length > 0 && (
                   <div>
                     <p className="label mb-1.5">Skills Matched</p>
@@ -624,7 +624,7 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
               </div>
             ) : analysis ? (
               <div className="space-y-4 text-sm">
-                <div className="flex items-center gap-6 p-4 rounded-xl" style={{ background: "var(--bg-elevated)" }}>
+                <div className="flex flex-wrap items-center gap-4 p-4 rounded-xl" style={{ background: "var(--bg-elevated)" }}>
                   <div>
                     <p className="label">Fit Score</p>
                     <FitScore score={analysis.fit_score} size="md" />
@@ -657,7 +657,7 @@ function AiToolsPanel({ job, analysis, analyzing, handleAnalyze, agentResult, ag
                     </ul>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {analysis.skills_matched.length > 0 && (
                     <div>
                       <p className="label mb-1.5">Skills Matched</p>

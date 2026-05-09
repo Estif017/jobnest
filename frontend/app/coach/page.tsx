@@ -175,7 +175,7 @@ export default function CoachPage() {
         {/* Sessions dropdown */}
         {sessionsOpen && (
           <div
-            className="absolute top-full right-0 mt-2 w-72 z-20 overflow-hidden rounded-2xl shadow-lg"
+            className="absolute top-full right-0 mt-2 w-[min(18rem,calc(100vw-2rem))] z-20 overflow-hidden rounded-2xl shadow-lg"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--bg-border)" }}
           >
             <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--bg-border)" }}>
