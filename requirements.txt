@@ -5,6 +5,7 @@ fastapi
 psycopg2-binary
 pdfplumber
 python-dotenv
+PyJWT
 python-jose[cryptography]
 python-multipart
 pydantic
