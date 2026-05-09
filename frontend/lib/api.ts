@@ -45,6 +45,7 @@ async function getApiToken(): Promise<string> {
 
 // Keep this export so providers.tsx compiles without changes — it's now a no-op
 // because user identity is carried in the signed Bearer token, not in a header.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function setApiUserId(_id: string | undefined) { /* no-op */ }
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
