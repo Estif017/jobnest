@@ -11,8 +11,6 @@ No button. No trigger. It just runs.
 
 import logging
 import os
-import smtplib
-from email.mime.text import MIMEText
 from typing import List, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -36,17 +34,29 @@ DEFAULT_FIT_THRESHOLD = 7   # Fallback when user has no preference set
 # Email alert
 # ---------------------------------------------------------------------------
 
+def _resend_email(to_email: str, subject: str, text_body: str) -> None:
+    """Sends a plain-text email via Resend HTTP API. Never raises."""
+    import urllib.request, urllib.error, json as _json
+    api_key = os.getenv("RESEND_API_KEY", "")
+    sender  = os.getenv("EMAIL_SENDER", "onboarding@resend.dev")
+    if not api_key:
+        logger.warning("RESEND_API_KEY not set — email skipped.")
+        return
+    payload = _json.dumps({"from": sender, "to": [to_email], "subject": subject, "text": text_body}).encode()
+    req = urllib.request.Request(
+        "https://api.resend.com/emails", data=payload,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            logger.info("Email '%s' sent to %s (status %s).", subject, to_email, resp.status)
+    except Exception as exc:
+        logger.error("Failed to send email to %s: %s", to_email, exc)
+
+
 def _send_alert(to_email: str, jobs: List[ScoredJob]) -> None:
     """Sends a plain-text job alert email listing all high-fit matches."""
-    sender   = os.getenv("EMAIL_SENDER", "")
-    password = os.getenv("EMAIL_PASSWORD", "")
-    host     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    port     = int(os.getenv("SMTP_PORT", "587"))
-
-    if not sender or not password:
-        logger.warning("EMAIL_SENDER / EMAIL_PASSWORD not set — alert skipped.")
-        return
-
     count = len(jobs)
     lines = [
         f"JobNest found {count} great match{'es' if count != 1 else ''} for you today!\n",
@@ -60,20 +70,7 @@ def _send_alert(to_email: str, jobs: List[ScoredJob]) -> None:
             lines.append(f"  Why: {s.reasons[0]}")
         lines.append("-" * 52)
     lines.append("\nOpen JobNest to apply: http://localhost:3000/jobs")
-
-    msg = MIMEText("\n".join(lines), "plain")
-    msg["Subject"] = f"JobNest Alert: {count} strong match{'es' if count != 1 else ''} found"
-    msg["From"]    = sender
-    msg["To"]      = to_email
-
-    try:
-        with smtplib.SMTP(host, port) as server:
-            server.starttls()
-            server.login(sender, password)
-            server.sendmail(sender, to_email, msg.as_string())
-        logger.info("Alert sent to %s (%d job(s)).", to_email, count)
-    except Exception as exc:
-        logger.error("Failed to send alert to %s: %s", to_email, exc)
+    _resend_email(to_email, f"JobNest Alert: {count} strong match{'es' if count != 1 else ''} found", "\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -87,13 +84,8 @@ def send_weekly_digest() -> None:
     overdue follow-ups, and high-fit jobs still saved (not applied).
     """
     logger.info("=== JobNest weekly digest starting ===")
-    sender   = os.getenv("EMAIL_SENDER", "")
-    password = os.getenv("EMAIL_PASSWORD", "")
-    host     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    port     = int(os.getenv("SMTP_PORT", "587"))
-
-    if not sender or not password:
-        logger.warning("EMAIL credentials not set — digest skipped.")
+    if not os.getenv("RESEND_API_KEY"):
+        logger.warning("RESEND_API_KEY not set — digest skipped.")
         return
 
     users = get_all_active_users()
@@ -160,19 +152,8 @@ def send_weekly_digest() -> None:
 
         lines += ["", "Keep the momentum going!", "Open JobNest: http://localhost:3000/jobs"]
 
-        msg = MIMEText("\n".join(lines), "plain")
-        msg["Subject"] = f"JobNest Weekly Digest — {week_label}"
-        msg["From"]    = sender
-        msg["To"]      = email
-
-        try:
-            with smtplib.SMTP(host, port) as server:
-                server.starttls()
-                server.login(sender, password)
-                server.sendmail(sender, email, msg.as_string())
-            logger.info("Weekly digest sent to %s.", email)
-        except Exception as exc:
-            logger.error("Failed to send digest to %s: %s", email, exc)
+        _resend_email(email, f"JobNest Weekly Digest — {week_label}", "\n".join(lines))
+        logger.info("Weekly digest sent to %s.", email)
 
     logger.info("=== Weekly digest complete ===")
 

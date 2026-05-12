@@ -2,44 +2,54 @@
 api/email_utils.py — Transactional email helpers for JobNest.
 
 All send_* functions are fire-and-forget: they spawn a daemon thread so the
-HTTP response returns immediately — SMTP latency never blocks the caller.
+HTTP response returns immediately — email latency never blocks the caller.
+
+Uses Resend (https://resend.com) via HTTP API — works on Railway where
+outbound SMTP (port 587) is blocked. Falls back gracefully if not configured.
 """
 
 import logging
 import os
-import smtplib
 import threading
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import urllib.request
+import urllib.error
+import json
 
 logger = logging.getLogger(__name__)
 
-SMTP_TIMEOUT = 10  # seconds — fail fast instead of hanging forever
-
 
 def _send_html_email(to_email: str, subject: str, html_body: str) -> None:
-    """Sends a single HTML email via SMTP with a hard timeout. Never raises."""
-    sender   = os.getenv("EMAIL_SENDER", "")
-    password = os.getenv("EMAIL_PASSWORD", "")
-    host     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    port     = int(os.getenv("SMTP_PORT", "587"))
+    """Sends a single HTML email via Resend HTTP API. Never raises."""
+    api_key = os.getenv("RESEND_API_KEY", "")
+    sender  = os.getenv("EMAIL_SENDER", "onboarding@resend.dev")
 
-    if not sender or not password:
-        logger.warning("EMAIL_SENDER / EMAIL_PASSWORD not set — email skipped.")
+    if not api_key:
+        logger.warning("RESEND_API_KEY not set — email skipped.")
         return
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = sender
-    msg["To"]      = to_email
-    msg.attach(MIMEText(html_body, "html"))
+    payload = json.dumps({
+        "from":    sender,
+        "to":      [to_email],
+        "subject": subject,
+        "html":    html_body,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type":  "application/json",
+        },
+        method="POST",
+    )
 
     try:
-        with smtplib.SMTP(host, port, timeout=SMTP_TIMEOUT) as server:
-            server.starttls()
-            server.login(sender, password)
-            server.sendmail(sender, to_email, msg.as_string())
-        logger.info("Email '%s' sent to %s.", subject, to_email)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            logger.info("Email '%s' sent to %s (status %s).", subject, to_email, resp.status)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        logger.error("Resend error sending to %s: %s %s", to_email, exc.code, body)
     except Exception as exc:
         logger.error("Failed to send email to %s: %s", to_email, exc)
 
