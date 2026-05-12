@@ -101,6 +101,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 _allowed_origins = [
     "http://localhost:3000",
     "https://jobnest-nu.vercel.app",
+    "https://frontend-production-0469.up.railway.app",
 ]
 _frontend_url = os.getenv("FRONTEND_URL")
 if _frontend_url:
