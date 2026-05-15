@@ -37,8 +37,8 @@ DEFAULT_FIT_THRESHOLD = 7   # Fallback when user has no preference set
 def _resend_email(to_email: str, subject: str, text_body: str) -> None:
     """Sends a plain-text email via Resend HTTP API. Never raises."""
     import urllib.request, urllib.error, json as _json
-    api_key = os.getenv("RESEND_API_KEY", "")
-    sender  = os.getenv("EMAIL_SENDER", "onboarding@resend.dev")
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    sender  = os.getenv("EMAIL_SENDER", "onboarding@resend.dev").strip()
     if not api_key:
         logger.warning("RESEND_API_KEY not set — email skipped.")
         return
