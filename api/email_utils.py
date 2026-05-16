@@ -40,6 +40,7 @@ def _send_html_email(to_email: str, subject: str, html_body: str) -> None:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type":  "application/json",
+            "User-Agent":    "JobNest/1.0",
         },
         method="POST",
     )

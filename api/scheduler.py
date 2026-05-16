@@ -45,7 +45,7 @@ def _resend_email(to_email: str, subject: str, text_body: str) -> None:
     payload = _json.dumps({"from": sender, "to": [to_email], "subject": subject, "text": text_body}).encode()
     req = urllib.request.Request(
         "https://api.resend.com/emails", data=payload,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": "JobNest/1.0"},
         method="POST",
     )
     try:
