@@ -47,7 +47,12 @@ def _search_remoteok(query: str) -> List[dict]:
     Matches if any query keyword appears in the job title or tags.
     Raises RuntimeError if the request fails.
     """
-    headers  = {"User-Agent": "JobNest/1.0 (job tracker application)"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://remoteok.com/",
+    }
     response = requests.get(REMOTEOK_API_URL, headers=headers, timeout=REQUEST_TIMEOUT)
 
     if response.status_code != 200:
