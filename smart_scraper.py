@@ -23,7 +23,7 @@ from models import Job, ScoredJob, UserProfile
 
 console = Console()     # Shared Rich console for all output in this file
 
-REMOTEOK_API_URL = "https://remoteok.com/api"
+REMOTIVE_API_URL = "https://remotive.com/api/remote-jobs"
 MAX_RESULTS      = 25       # Cap results per search to keep output manageable
 REQUEST_TIMEOUT  = 15       # Seconds before giving up on the HTTP request
 
@@ -39,45 +39,34 @@ VERDICT_COLORS = {
 # Search and parse
 # ---------------------------------------------------------------------------
 
-def _search_remoteok(query: str) -> List[dict]:
+def _search_remotive(query: str) -> List[dict]:
     """
-    Fetches remote job listings from RemoteOK's public API (no key required).
-    Pulls the full feed and filters client-side — RemoteOK's tag search is too
-    narrow and returns zero results for common queries like "software engineer".
-    Matches if any query keyword appears in the job title or tags.
+    Fetches remote job listings from Remotive's public API (no key required).
+    Passes the query as a server-side search parameter so results are pre-filtered.
     Raises RuntimeError if the request fails.
     """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://remoteok.com/",
+        "Accept": "application/json",
     }
-    response = requests.get(REMOTEOK_API_URL, headers=headers, timeout=REQUEST_TIMEOUT)
+    params = {"search": query, "limit": MAX_RESULTS}
+    response = requests.get(REMOTIVE_API_URL, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
 
     if response.status_code != 200:
-        raise RuntimeError(f"RemoteOK API returned HTTP {response.status_code}.")
+        raise RuntimeError(f"Remotive API returned HTTP {response.status_code}.")
 
     data = response.json()
-
-    # First element is always API metadata, not a job — filter it out
-    all_jobs = [item for item in data if isinstance(item, dict) and item.get("position")]
-
-    # Filter: keep jobs where any query keyword matches title or tags (case-insensitive)
-    keywords = [kw.lower() for kw in query.split()]
-    matched  = []
-    for job in all_jobs:
-        searchable = (job.get("position", "") + " " + " ".join(job.get("tags", []))).lower()
-        if any(kw in searchable for kw in keywords):
-            matched.append(job)
+    jobs = data.get("jobs", [])
 
     results = []
-    for job in matched[:MAX_RESULTS]:
+    for job in jobs[:MAX_RESULTS]:
+        import re
+        description = re.sub(r"<[^>]+>", " ", job.get("description", "")).strip()[:500]
         results.append({
-            "title":       job.get("position", ""),
-            "company":     job.get("company", "Unknown"),
+            "title":       job.get("title", ""),
+            "company":     job.get("company_name", "Unknown"),
             "url":         job.get("url", ""),
-            "description": " ".join(job.get("tags", [])),
+            "description": description,
         })
 
     return results
@@ -205,16 +194,16 @@ def run_smart_search(query: str, location: str, score: bool = True, user_id: int
     → print table → log the session. Returns scored jobs (empty list if score=False).
     Pass score=False to skip AI entirely and just fetch + save jobs.
     """
-    console.print(f"\n[bold]Searching RemoteOK:[/bold] {query!r} ...")
+    console.print(f"\n[bold]Searching Remotive:[/bold] {query!r} ...")
 
     try:
-        results = _search_remoteok(query)
+        results = _search_remotive(query)
     except RuntimeError as e:
         console.print(f"[red]Search failed:[/red] {e}")
         return []
 
     if not results:
-        console.print("No jobs returned from RemoteOK for this query.")
+        console.print("No jobs returned from Remotive for this query.")
         return []
 
     console.print(f"Found {len(results)} listing(s). Saving new ones ...")
