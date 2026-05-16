@@ -9,6 +9,7 @@ the search run is logged to the search_sessions table. Pass score=False (or
 --no-ai from the CLI) to skip AI entirely and just fetch and save jobs.
 """
 
+import re
 import sys
 from typing import List
 from urllib.parse import quote_plus
@@ -60,7 +61,6 @@ def _search_remotive(query: str) -> List[dict]:
 
     results = []
     for job in jobs[:MAX_RESULTS]:
-        import re
         description = re.sub(r"<[^>]+>", " ", job.get("description", "")).strip()[:500]
         results.append({
             "title":       job.get("title", ""),
@@ -69,6 +69,74 @@ def _search_remotive(query: str) -> List[dict]:
             "description": description,
         })
 
+    return results
+
+
+def _search_jobicy(query: str) -> List[dict]:
+    """
+    Fetches remote jobs from Jobicy's public API using the first keyword as a tag.
+    Returns empty list on failure so other sources still run.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+    }
+    tag = query.split()[0].lower()
+    params = {"count": MAX_RESULTS, "tag": tag}
+    try:
+        response = requests.get("https://jobicy.com/api/v2/remote-jobs", headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+        if response.status_code != 200:
+            return []
+        jobs = response.json().get("jobs", [])
+    except Exception:
+        return []
+
+    results = []
+    for job in jobs[:MAX_RESULTS]:
+        description = re.sub(r"<[^>]+>", " ", job.get("jobDescription", "")).strip()[:500]
+        results.append({
+            "title":       job.get("jobTitle", ""),
+            "company":     job.get("companyName", "Unknown"),
+            "url":         job.get("url", ""),
+            "description": description,
+        })
+    return results
+
+
+def _search_arbeitnow(query: str) -> List[dict]:
+    """
+    Fetches the Arbeitnow remote job feed and filters client-side by keyword.
+    Returns empty list on failure so other sources still run.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+    }
+    try:
+        response = requests.get("https://www.arbeitnow.com/api/job-board-api", headers=headers, timeout=REQUEST_TIMEOUT)
+        if response.status_code != 200:
+            return []
+        all_jobs = response.json().get("data", [])
+    except Exception:
+        return []
+
+    keywords = [kw.lower() for kw in query.split()]
+    results = []
+    for job in all_jobs:
+        if not job.get("remote"):
+            continue
+        searchable = (job.get("title", "") + " " + " ".join(job.get("tags", []))).lower()
+        if not any(kw in searchable for kw in keywords):
+            continue
+        description = re.sub(r"<[^>]+>", " ", job.get("description", "")).strip()[:500]
+        results.append({
+            "title":       job.get("title", ""),
+            "company":     job.get("company_name", "Unknown"),
+            "url":         job.get("url", ""),
+            "description": description,
+        })
+        if len(results) >= MAX_RESULTS:
+            break
     return results
 
 
@@ -194,16 +262,28 @@ def run_smart_search(query: str, location: str, score: bool = True, user_id: int
     → print table → log the session. Returns scored jobs (empty list if score=False).
     Pass score=False to skip AI entirely and just fetch + save jobs.
     """
-    console.print(f"\n[bold]Searching Remotive:[/bold] {query!r} ...")
+    console.print(f"\n[bold]Searching jobs:[/bold] {query!r} ...")
 
-    try:
-        results = _search_remotive(query)
-    except RuntimeError as e:
-        console.print(f"[red]Search failed:[/red] {e}")
-        return []
+    sources = [
+        (_search_remotive,   "Remotive"),
+        (_search_jobicy,     "Jobicy"),
+        (_search_arbeitnow,  "Arbeitnow"),
+    ]
+
+    results: List[dict] = []
+    seen_urls: set = set()
+    for fn, name in sources:
+        try:
+            source_results = fn(query)
+            new = [r for r in source_results if r.get("url") and r["url"] not in seen_urls]
+            seen_urls.update(r["url"] for r in new)
+            results.extend(new)
+            console.print(f"  {name}: {len(new)} listing(s)")
+        except Exception as exc:
+            console.print(f"  [yellow]{name}: skipped ({exc})[/yellow]")
 
     if not results:
-        console.print("No jobs returned from Remotive for this query.")
+        console.print("No jobs returned from any source for this query.")
         return []
 
     console.print(f"Found {len(results)} listing(s). Saving new ones ...")
